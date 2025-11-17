@@ -51,6 +51,10 @@ class GaugeWidget(QtWidgets.QWidget):
         self._style: dict[str, str] = {}
         self._style_name = ""
 
+        self._target_ticks = 8
+        self._tick_step = maximum / self._target_ticks if maximum else 0
+        self._tick_values: list[float] = []
+
         self._anim = QtCore.QPropertyAnimation(self, b"displayValue")
         self._anim.setDuration(450)
         self._anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
@@ -60,6 +64,58 @@ class GaugeWidget(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
         )
         self.setStyle(style)
+        self._recalculate_scale(maximum)
+
+    def _nice_number(self, value: float) -> float:
+        if value <= 0:
+            return 1
+
+        exponent = math.floor(math.log10(value))
+        fraction = value / (10**exponent)
+
+        if fraction <= 1:
+            nice_fraction = 1
+        elif fraction <= 2:
+            nice_fraction = 2
+        elif fraction <= 5:
+            nice_fraction = 5
+        else:
+            nice_fraction = 10
+
+        return nice_fraction * (10**exponent)
+
+    def _recalculate_scale(self, value: float) -> None:
+        """Align tick intervals with the current reading and scale the gauge."""
+
+        target = max(value, 1)
+
+        best_max = None
+        best_ticks = self._target_ticks
+        best_step = self._tick_step
+        best_slack = None
+
+        for ticks in range(5, 10):
+            step = self._nice_number(target / ticks)
+            nice_max = step * ticks
+            slack = nice_max - target
+            preference = abs(ticks - 7)
+
+            if best_slack is None or slack < best_slack or (
+                math.isclose(slack, best_slack) and preference < abs(best_ticks - 7)
+            ):
+                best_max = nice_max
+                best_ticks = ticks
+                best_step = step
+                best_slack = slack
+
+        self._target_ticks = best_ticks
+        self.maximum = best_max or target
+        self._tick_step = best_step
+        self._tick_values = [self._tick_step * i for i in range(self._target_ticks + 1)]
+        # Keep the animated value within the new scale.
+        self._display_value = min(self._display_value, self.maximum)
+        self._value = min(self._value, self.maximum)
+        self.update()
 
     def _palette(self, style_name: str | None = None) -> dict[str, str]:
         """Return a validated palette, falling back to the default."""
@@ -84,6 +140,11 @@ class GaugeWidget(QtWidgets.QWidget):
         self._style_name = style_name if style_name in self.STYLES else "oem"
         self.update()
 
+    def setMaximum(self, maximum: float) -> None:  # noqa: N802
+        """Manually set and align the gauge scale to a new maximum."""
+
+        self._recalculate_scale(maximum)
+
     def setCustomStyle(self, palette: dict[str, str], name: str = "custom") -> None:  # noqa: N802
         """Apply a custom palette to the gauge.
 
@@ -103,7 +164,13 @@ class GaugeWidget(QtWidgets.QWidget):
         self.update()
 
     def setValue(self, value: float) -> None:  # noqa: N802
-        clamped = max(0.0, min(self.maximum, value))
+        incoming = max(0.0, value)
+
+        if incoming > self.maximum:
+            self._recalculate_scale(incoming)
+
+        clamped = min(self.maximum, incoming)
+
         if math.isclose(clamped, self._display_value, abs_tol=0.2):
             self._display_value = clamped
             self._value = clamped
@@ -223,8 +290,8 @@ class GaugeWidget(QtWidgets.QWidget):
             tick_pen = QtGui.QPen(QtGui.QColor(palette["accent_alt"]))
             tick_pen.setWidth(2)
             painter.setPen(tick_pen)
-            ticks = 8
-            for i in range(ticks + 1):
+            ticks = max(1, len(self._tick_values) - 1)
+            for i, tick_value in enumerate(self._tick_values):
                 angle = math.radians(start_angle + (span_angle / ticks) * i)
                 inner = QtCore.QPointF(
                     math.cos(angle) * (radius - pen_width * 1.5),
@@ -240,20 +307,19 @@ class GaugeWidget(QtWidgets.QWidget):
             painter.setFont(label_font)
             painter.setPen(QtGui.QColor(palette["text"]).lighter(115))
             label_radius = radius - pen_width * 2.6
-            for i in range(ticks + 1):
+            for i, tick_value in enumerate(self._tick_values):
                 angle = math.radians(start_angle + (span_angle / ticks) * i)
                 pos = QtCore.QPointF(
                     math.cos(angle) * label_radius,
                     math.sin(angle) * label_radius,
                 )
-                value = int(self.maximum / ticks * i)
                 painter.save()
                 painter.translate(pos)
                 painter.rotate((math.degrees(angle) + 90))
                 painter.drawText(
                     QtCore.QRectF(-16, -10, 32, 20),
                     QtCore.Qt.AlignCenter,
-                    f"{value}",
+                    f"{tick_value:,.0f}",
                 )
                 painter.restore()
             painter.restore()

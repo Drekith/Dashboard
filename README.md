@@ -11,6 +11,7 @@ A Windows-focused dashboard that mimics the modern cluster shown in the mock ima
 - Real-time UI built with PySide6 that mirrors the layout of the provided cluster mock: driver zone on the left and assist tiles on the right, now with animated gauges and a style switcher.
 - Modular data providers for CAN, K-Line, and simulated data. Providers run in background threads and merge into a shared `VehicleState`.
 - Graceful degradation: if hardware is missing, a simulator keeps the UI alive while surfacing status messages.
+- Auto-calibrated gauges that expand their scale and tick intervals to stay synchronized with live speed/RPM readings.
 - OEM-inspired visuals with animated speed/RPM gauges and configurable colorways ("oem", "neo", "contrast", "mono") tuned for the Vivaro cluster mock, paired with new digital hero cards for instant glanceable speed/RPM plus system chips.
 - Tabbed navigation with a **Settings** page (hardware status, layout toggle), a **Layout Editor** for gauge arrangement/visibility, and a **Theme Editor** to craft custom gauge palettes without editing code.
 - Touch-friendly controls (large tabs, buttons, combos) plus a quick **Full screen** toggle to maximize usable space on an in-dash display.
