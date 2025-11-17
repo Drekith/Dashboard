@@ -23,6 +23,14 @@ class KLineProvider(DataProvider):
 
         return serial.Serial(self.port, self.baudrate, timeout=1)
 
+    def probe(self) -> bool:
+        try:
+            ser = self._open_serial()
+            ser.close()
+            return True
+        except Exception:
+            return False
+
     def run(self) -> None:
         try:
             ser = self._open_serial()

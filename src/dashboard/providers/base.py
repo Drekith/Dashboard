@@ -22,6 +22,15 @@ class DataProvider(ABC):
     def run(self) -> None:
         ...
 
+    def probe(self) -> bool:
+        """Return whether the provider can run.
+
+        Subclasses should override when a lightweight connectivity check is
+        possible. The default implementation assumes success.
+        """
+
+        return True
+
     def start(self) -> None:
         if self.thread and self.thread.is_alive():
             return

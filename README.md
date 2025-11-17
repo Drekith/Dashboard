@@ -29,7 +29,7 @@ pip install -r requirements.txt
 
 ## Running
 
-1. Plug in the adapters and note their Windows COM names (e.g., `COM3` for CAN, `COM4` for ELM327). Export them as environment variables before launching:
+1. Plug in the adapters and note their Windows COM names (e.g., `COM3` for CAN, `COM4` for ELM327). Export them as environment variables before launching. If `KLINE_PORT` is not set, the app will try to auto-detect the first ELM/OBD USB serial device:
 
 ```bash
 set CAN_CHANNEL=COM3
@@ -42,7 +42,7 @@ set KLINE_PORT=COM4
 python -m dashboard.main
 ```
 
-If no hardware is detected, the simulator will provide moving demo data and display a brief status message in the cluster.
+Startup will probe for the configured devices. If initialization fails or no hardware is detected, the simulator will activate automatically and display a brief status message in the cluster.
 
 ## Customizing decoding
 

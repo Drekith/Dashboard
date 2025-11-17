@@ -22,6 +22,14 @@ class CanProvider(DataProvider):
 
         return can.interface.Bus(channel=self.channel, bustype="usb2can", bitrate=self.bitrate)
 
+    def probe(self) -> bool:
+        try:
+            bus = self._build_bus()
+            bus.shutdown()
+            return True
+        except Exception:
+            return False
+
     def run(self) -> None:
         try:
             bus = self._build_bus()
