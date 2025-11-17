@@ -8,9 +8,10 @@ A Windows-focused dashboard that mimics the modern cluster shown in the mock ima
 
 ## Features
 
-- Real-time UI built with PySide6 that mirrors the layout of the provided cluster mock: driver zone on the left and assist tiles on the right.
+- Real-time UI built with PySide6 that mirrors the layout of the provided cluster mock: driver zone on the left and assist tiles on the right, now with animated gauges and a style switcher.
 - Modular data providers for CAN, K-Line, and simulated data. Providers run in background threads and merge into a shared `VehicleState`.
 - Graceful degradation: if hardware is missing, a simulator keeps the UI alive while surfacing status messages.
+- Modernized visuals with animated speed/RPM gauges and configurable colorways ("neo", "contrast", "mono").
 
 ## Requirements
 
@@ -54,7 +55,8 @@ Startup will probe for the configured devices. If initialization fails or no har
 - `src/dashboard/state.py` – `VehicleState` dataclass and indicator enums.
 - `src/dashboard/providers/` – Hardware and simulator data providers.
 - `src/dashboard/services/data_pipeline.py` – Thread-safe state aggregation.
-- `src/dashboard/ui/main_window.py` – PySide6 UI mirroring the provided layout.
+- `src/dashboard/ui/main_window.py` – PySide6 UI with animated gauges and assist/status tiles.
+- `src/dashboard/ui/gauge.py` – Reusable animated gauge widget with selectable styles.
 - `src/dashboard/main.py` – Entry point that wires providers and starts the app.
 
 ## Notes for the 2003 Vauxhall Vivaro
@@ -62,3 +64,8 @@ Startup will probe for the configured devices. If initialization fails or no har
 - Typical CAN bitrate is 500 kbps; adjust `bitrate` in `CanProvider` if your van differs.
 - The placeholder arbitration ID `0x180` should be replaced with the actual BCM frame IDs from your vehicle.
 - K-line on the Vivaro often runs at 10400 baud. Ensure the ELM327 adapter is configured accordingly.
+
+## Styling and UI customization
+
+- Use the **Gauge style** dropdown in the header to swap between the built-in palettes (neo, contrast, mono) without restarting the app.
+- The assist sidebar now focuses on navigation, ambient temperature, battery, and indicator/door status chips, removing unused mock items like radio and drive mode.

@@ -20,8 +20,6 @@ class VehicleUpdate:
     indicator: Optional[IndicatorState] = None
     door_open: Optional[bool] = None
     ambient_temp_f: Optional[float] = None
-    drive_mode: Optional[str] = None
-    radio_station: Optional[str] = None
     ambient_assist_message: Optional[str] = None
 
 
@@ -35,8 +33,6 @@ class VehicleState:
     indicator: IndicatorState = IndicatorState.OFF
     door_open: bool = False
     ambient_temp_f: float = 72.0
-    drive_mode: str = "ECO"
-    radio_station: str = "Radio"
     ambient_assist_message: str = ""  # short hint text
 
     def apply_update(self, update: VehicleUpdate) -> None:
