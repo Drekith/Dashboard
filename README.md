@@ -50,8 +50,8 @@ Startup will probe for the configured devices. If initialization fails or no har
 
 ### In-app port configuration
 
-- Open the **Settings** tab to edit CAN channel/bitrate and K-Line port/baud while the app is running. Click **Apply port settings** to rebuild the providers with the new COM assignments without restarting.
-- Use **Auto-detect K-Line** to prefill the first detected ELM/OBD serial device; detected ports are also listed in the dropdown for quick selection.
+- Open the **Settings** tab (or tap the **Ports** quick button on the Dashboard header) to edit CAN channel/bitrate and K-Line port/baud while the app is running. Click **Apply port settings** to rebuild the providers with the new COM assignments without restarting.
+- Use **Auto-detect K-Line** to prefill the first detected ELM/OBD serial device; detected ports are also listed in the dropdown for quick selection. The current CAN/K-Line settings are shown above the form for quick confirmation.
 
 ## Customizing decoding
 
@@ -78,7 +78,7 @@ Startup will probe for the configured devices. If initialization fails or no har
 - Use the **Gauge style** dropdown in the header to swap between the built-in palettes (oem, neo, contrast, mono) without restarting the app.
 - The assist sidebar now focuses on navigation, ambient temperature, battery, and indicator/door status chips, removing unused mock items like radio, drive mode, and altitude displays.
 - Open the **Settings** tab to confirm which data providers are active and flip the layout to swap gauge order.
-- The **Layout Editor** tab offers presets (standard, swapped, vertical stack), drag-and-drop placement of the hero/gauge/assist/status widgets onto a live grid, and visibility toggles so you can tailor the dashboard footprint.
+- The **Layout Editor** tab offers presets (standard, swapped, vertical stack), drag-and-drop placement of the hero/gauge/assist/status widgets onto a live grid, and visibility toggles so you can tailor the dashboard footprint. Press and hold a tile to start dragging on touchscreens, then drop it into a slot.
 - Use the **Theme Editor** tab to pick custom colors (track, glow, accent, accent alt, text), name the palette, and apply it live to both gauges. Custom palettes are added to the style dropdown for reuse.
 - Tap **Full screen** on the Dashboard tab to hide chrome for a cleaner, OEM-like touchscreen experience; tap again to return.
 - The new hero row shows large digital speed/RPM readouts and battery/ambient/route chips sized for finger taps.

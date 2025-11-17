@@ -53,6 +53,7 @@ class DraggableTile(QtWidgets.QFrame):
         self.key = key
         self.setProperty("class", "panel")
         self.setCursor(QtCore.Qt.OpenHandCursor)
+        self._press_pos: QtCore.QPoint | None = None
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         label = QtWidgets.QLabel(title)
@@ -60,14 +61,25 @@ class DraggableTile(QtWidgets.QFrame):
         layout.addWidget(label)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
-        if event.button() != QtCore.Qt.LeftButton:
-            return super().mousePressEvent(event)
+        if event.button() == QtCore.Qt.LeftButton:
+            self._press_pos = event.pos()
+        return super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if not (event.buttons() & QtCore.Qt.LeftButton):
+            return super().mouseMoveEvent(event)
+        if self._press_pos is None:
+            return super().mouseMoveEvent(event)
+        if (event.pos() - self._press_pos).manhattanLength() < QtWidgets.QApplication.startDragDistance():
+            return super().mouseMoveEvent(event)
+
         drag = QtGui.QDrag(self)
         mime = QtCore.QMimeData()
         mime.setData(MIME_TYPE, self.key.encode())
         drag.setMimeData(mime)
         drag.setPixmap(self.grab())
         drag.exec(QtCore.Qt.MoveAction)
+        super().mouseMoveEvent(event)
 
 
 class DropZone(QtWidgets.QFrame):
@@ -187,6 +199,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fullscreen_btn.clicked.connect(self._toggle_fullscreen)
         header_row.addWidget(self.fullscreen_btn)
 
+        self.quick_ports_btn = QtWidgets.QPushButton("Ports")
+        self.quick_ports_btn.clicked.connect(lambda: self._jump_to_tab(self.settings_tab))
+        header_row.addWidget(self.quick_ports_btn)
+
+        self.quick_layout_btn = QtWidgets.QPushButton("Layout")
+        self.quick_layout_btn.clicked.connect(lambda: self._jump_to_tab(self.layout_tab))
+        header_row.addWidget(self.quick_layout_btn)
+
         layout.addLayout(header_row)
 
         self.dashboard_grid = QtWidgets.QGridLayout()
@@ -299,6 +319,13 @@ class MainWindow(QtWidgets.QMainWindow):
         port_label = QtWidgets.QLabel("Port configuration")
         port_label.setProperty("role", "label")
         layout.addWidget(port_label)
+
+        self.port_summary = QtWidgets.QLabel(
+            f"Current: CAN {self.current_config.can_channel or 'sim'} @ {self.current_config.can_bitrate} | "
+            f"K-Line {self.current_config.kline_port or 'sim'} @ {self.current_config.kline_baud}"
+        )
+        self.port_summary.setProperty("class", "muted")
+        layout.addWidget(self.port_summary)
 
         port_form = QtWidgets.QFormLayout()
         port_form.setLabelAlignment(QtCore.Qt.AlignRight)
@@ -414,6 +441,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         drag_hint.setProperty("role", "subtitle")
         layout.addWidget(drag_hint)
+
+        mini_hint = QtWidgets.QLabel(
+            "Press and hold a tile, then move it into a slot. Use the presets to reset."
+        )
+        mini_hint.setProperty("class", "muted")
+        layout.addWidget(mini_hint)
 
         preset_label = QtWidgets.QLabel("Gauge arrangement")
         preset_label.setProperty("role", "label")
@@ -651,7 +684,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.provider_list.clear()
         for provider in self.pipeline.providers:
             name = provider.__class__.__name__
-            label = QtWidgets.QListWidgetItem(name)
+            details: list[str] = []
+            channel = getattr(provider, "channel", "") or getattr(provider, "port", "")
+            baud = getattr(provider, "baudrate", "") or getattr(provider, "bitrate", "")
+            if channel:
+                details.append(str(channel))
+            if baud:
+                details.append(f"@ {baud}")
+            label = QtWidgets.QListWidgetItem(f"{name} {' '.join(details)}".strip())
             self.provider_list.addItem(label)
 
     def _apply_touch_targets(self) -> None:
@@ -661,6 +701,8 @@ class MainWindow(QtWidgets.QMainWindow):
             getattr(self, "layout_preset_combo", None),
             getattr(self, "apply_theme_btn", None),
             getattr(self, "fullscreen_btn", None),
+            getattr(self, "quick_ports_btn", None),
+            getattr(self, "quick_layout_btn", None),
         ]
         for control in controls:
             if control:
@@ -805,6 +847,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     config.can_channel or "sim", config.kline_port or "sim"
                 )
             )
+            if hasattr(self, "port_summary"):
+                self.port_summary.setText(
+                    f"Current: CAN {config.can_channel or 'sim'} @ {config.can_bitrate} | "
+                    f"K-Line {config.kline_port or 'sim'} @ {config.kline_baud}"
+                )
         except Exception as exc:  # noqa: BLE001
             self.hardware_status_label.setText(f"Status: Failed to apply ports: {exc}")
         self._populate_provider_list()
@@ -817,6 +864,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.style_selector.findText(name) == -1:
             self.style_selector.addItem(name)
         self.style_selector.setCurrentText(name)
+
+    def _jump_to_tab(self, widget: QtWidgets.QWidget) -> None:
+        index = self.tabs.indexOf(widget)
+        if index != -1:
+            self.tabs.setCurrentIndex(index)
 
     def _toggle_fullscreen(self) -> None:
         if self.isFullScreen():
