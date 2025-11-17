@@ -2,9 +2,9 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from dashboard.state import VehicleState
+from dashboard.state import VehicleUpdate
 
-UpdateCallback = Callable[[VehicleState], None]
+UpdateCallback = Callable[[VehicleUpdate], None]
 
 
 class DataProvider(ABC):

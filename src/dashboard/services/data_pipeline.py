@@ -4,7 +4,7 @@ import threading
 from typing import Iterable, List
 
 from dashboard.providers.base import DataProvider
-from dashboard.state import VehicleState
+from dashboard.state import VehicleState, VehicleUpdate
 
 
 class DataPipeline:
@@ -21,9 +21,9 @@ class DataPipeline:
         for provider in self.providers:
             provider.stop()
 
-    def apply_update(self, update: VehicleState) -> None:
+    def apply_update(self, update: VehicleUpdate) -> None:
         with self._lock:
-            self.state.apply_update(**update.__dict__)
+            self.state.apply_update(update)
 
     def snapshot(self) -> VehicleState:
         with self._lock:

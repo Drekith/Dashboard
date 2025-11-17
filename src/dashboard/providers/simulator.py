@@ -3,7 +3,7 @@ import random
 import time
 
 from dashboard.providers.base import DataProvider
-from dashboard.state import IndicatorState, VehicleState
+from dashboard.state import IndicatorState, VehicleUpdate
 
 
 class SimulatorProvider(DataProvider):
@@ -26,7 +26,7 @@ class SimulatorProvider(DataProvider):
             nav_distance = max(200, int(1200 - (self._angle * 25) % 1200))
             nav_heading = random.choice(["1", "2", "3"])
 
-            update = VehicleState(
+            update = VehicleUpdate(
                 speed_mph=speed,
                 rpm=rpm,
                 battery_level=battery,

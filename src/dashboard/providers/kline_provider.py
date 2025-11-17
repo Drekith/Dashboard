@@ -2,7 +2,7 @@ import importlib.util
 import time
 
 from dashboard.providers.base import DataProvider
-from dashboard.state import VehicleState
+from dashboard.state import VehicleUpdate
 
 
 class KLineProvider(DataProvider):
@@ -12,6 +12,8 @@ class KLineProvider(DataProvider):
         super().__init__(on_update)
         self.port = port
         self.baudrate = baudrate
+        self.last_rpm: float | None = None
+        self.last_speed: float | None = None
 
     def _open_serial(self):
         spec = importlib.util.find_spec("serial")
@@ -25,7 +27,7 @@ class KLineProvider(DataProvider):
         try:
             ser = self._open_serial()
         except Exception as exc:  # noqa: BLE001
-            self.on_update(VehicleState(ambient_assist_message=f"K-Line unavailable: {exc}"))
+            self.on_update(VehicleUpdate(ambient_assist_message=f"K-Line unavailable: {exc}"))
             return
 
         self._initialize_elm(ser)
@@ -35,9 +37,13 @@ class KLineProvider(DataProvider):
             ser.write(b"010D\r")  # Speed
             speed_line = ser.readline().decode(errors="ignore")
 
-            update = VehicleState(
-                rpm=self._parse_pid_value(rpm_line, fallback=self.on_update.__self__.state.rpm),
-                speed_mph=self._parse_pid_value(speed_line, scale=1.0, fallback=self.on_update.__self__.state.speed_mph),
+            rpm_value = self._parse_pid_value(rpm_line, scale=0.25, fallback=self.last_rpm or 0)
+            speed_value = self._parse_pid_value(speed_line, scale=1.0, fallback=self.last_speed or 0)
+            self.last_rpm, self.last_speed = rpm_value, speed_value
+
+            update = VehicleUpdate(
+                rpm=int(rpm_value),
+                speed_mph=float(speed_value),
             )
             self.on_update(update)
             time.sleep(1.0)
@@ -49,10 +55,10 @@ class KLineProvider(DataProvider):
             time.sleep(0.2)
             ser.readline()
 
-    def _parse_pid_value(self, line: str, scale: float = 0.25, fallback: float | int = 0) -> float:
+    def _parse_pid_value(self, line: str, scale: float, fallback: float | int = 0) -> float:
         try:
             parts = [int(p, 16) for p in line.strip().split()[2:4]]
             value = ((parts[0] * 256) + parts[1]) * scale
             return value
         except Exception:  # noqa: BLE001
-            return fallback
+            return float(fallback)

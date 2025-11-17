@@ -29,7 +29,13 @@ pip install -r requirements.txt
 
 ## Running
 
-1. Plug in the adapters and note their Windows COM names (e.g., `COM3` for CAN, `COM4` for ELM327). Update `build_pipeline()` in `src/dashboard/main.py` with those values.
+1. Plug in the adapters and note their Windows COM names (e.g., `COM3` for CAN, `COM4` for ELM327). Export them as environment variables before launching:
+
+```bash
+set CAN_CHANNEL=COM3
+set KLINE_PORT=COM4
+```
+
 2. From the repo root, launch the dashboard:
 
 ```bash
