@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path
 
@@ -8,7 +9,7 @@ if __package__ in (None, ""):
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-CONFLICT_TOKENS = ("<<<<<<<", "=======", ">>>>>>>")
+CONFLICT_MARKER = re.compile(r"^\s*(<<<<<<<|=======|>>>>>>>)( |$)", re.MULTILINE)
 
 
 def _ensure_no_conflicts() -> None:
@@ -26,7 +27,9 @@ def _ensure_no_conflicts() -> None:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if any(token in text for token in CONFLICT_TOKENS):
+        if path == Path(__file__).resolve():
+            continue
+        if CONFLICT_MARKER.search(text):
             offenders.append(path.relative_to(source_root))
 
     if offenders:
