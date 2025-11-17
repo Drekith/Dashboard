@@ -6,31 +6,32 @@ from dashboard.state import IndicatorState
 from dashboard.ui.gauge import GaugeWidget
 
 
+GLOBAL_STYLES = """
+QWidget { background-color: #05070f; color: #e5e7eb; }
+QLabel { font-family: 'Segoe UI', sans-serif; }
+QLabel[role="title"] { font-size: 32px; font-weight: 700; letter-spacing: 0.5px; }
+QLabel[role="subtitle"] { font-size: 20px; color: #cbd5e1; }
+QLabel[role="value"] { font-size: 24px; font-weight: 600; }
+QLabel[role="label"] { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.2px; }
+.panel { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0b1220, stop:1 #0f172a); border: 1px solid #1f2937; border-radius: 18px; padding: 18px; }
+.chip { background: rgba(148, 163, 184, 0.14); border-radius: 12px; padding: 8px 12px; }
+QComboBox { background: #0f172a; padding: 8px 12px; border: 1px solid #1f2937; border-radius: 12px; color: #e2e8f0; }
+QComboBox QAbstractItemView { background: #0f172a; selection-background-color: #1f2937; }
+QListWidget[class="panel"] { border: 1px solid #1f2937; border-radius: 12px; background: #0b1220; }
+QListWidget[class="panel"]::item { padding: 10px; }
+QPushButton { background: #1f2937; border: 1px solid #334155; border-radius: 10px; padding: 10px 14px; color: #e2e8f0; }
+QPushButton:hover { background: #273548; }
+QLineEdit { background: #0f172a; border: 1px solid #1f2937; border-radius: 10px; padding: 8px 10px; color: #e2e8f0; }
+"""
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, pipeline):
         super().__init__()
         self.pipeline = pipeline
         self.setWindowTitle("Vivaro Cluster")
         self.setMinimumSize(1280, 720)
-        self.setStyleSheet(
-            """
-            QWidget { background-color: #05070f; color: #e5e7eb; }
-            QLabel { font-family: 'Segoe UI', sans-serif; }
-            QLabel[role="title"] { font-size: 32px; font-weight: 700; letter-spacing: 0.5px; }
-            QLabel[role="subtitle"] { font-size: 20px; color: #cbd5e1; }
-            QLabel[role="value"] { font-size: 24px; font-weight: 600; }
-            QLabel[role="label"] { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.2px; }
-            .panel { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0b1220, stop:1 #0f172a); border: 1px solid #1f2937; border-radius: 18px; padding: 18px; }
-            .chip { background: rgba(148, 163, 184, 0.14); border-radius: 12px; padding: 8px 12px; }
-            QComboBox { background: #0f172a; padding: 8px 12px; border: 1px solid #1f2937; border-radius: 12px; color: #e2e8f0; }
-            QComboBox QAbstractItemView { background: #0f172a; selection-background-color: #1f2937; }
-            QListWidget[class="panel"] { border: 1px solid #1f2937; border-radius: 12px; background: #0b1220; }
-            QListWidget[class="panel"]::item { padding: 10px; }
-            QPushButton { background: #1f2937; border: 1px solid #334155; border-radius: 10px; padding: 10px 14px; color: #e2e8f0; }
-            QPushButton:hover { background: #273548; }
-            QLineEdit { background: #0f172a; border: 1px solid #1f2937; border-radius: 10px; padding: 8px 10px; color: #e2e8f0; }
-            """
-        )
+        self.setStyleSheet(GLOBAL_STYLES)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setTabPosition(QtWidgets.QTabWidget.North)
