@@ -62,6 +62,7 @@ class ProviderConfig:
     kline_port: str = ""
     kline_baud: int = 10400
     enable_simulator: bool = True
+    auto_connect: bool = True
 
     @classmethod
     def from_env(cls) -> "ProviderConfig":
@@ -74,4 +75,5 @@ class ProviderConfig:
             kline_baud=int(os.getenv("KLINE_BAUD", "10400")),
             enable_simulator=os.getenv("ENABLE_SIMULATOR", "1").lower()
             not in {"0", "false", "no"},
+            auto_connect=os.getenv("AUTO_CONNECT", "1").lower() not in {"0", "false", "no"},
         )

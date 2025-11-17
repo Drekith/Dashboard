@@ -86,6 +86,7 @@ class DraggableTile(QtWidgets.QFrame):
 
 class DropZone(QtWidgets.QFrame):
     dropped = QtCore.Signal(str, str)
+    menu_requested = QtCore.Signal(str, QtCore.QPoint)
 
     def __init__(self, slot: str, title: str, parent: QtWidgets.QWidget | None = None):
         super().__init__(parent)
@@ -103,6 +104,8 @@ class DropZone(QtWidgets.QFrame):
         self.content_label.setProperty("role", "subtitle")
         layout.addWidget(self.content_label)
         layout.addStretch()
+        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._emit_menu_request)
 
     def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:  # noqa: N802
         if event.mimeData().hasFormat(MIME_TYPE):
@@ -127,43 +130,105 @@ class DropZone(QtWidgets.QFrame):
     def set_assigned(self, text: str) -> None:
         self.content_label.setText(text)
 
+    def _emit_menu_request(self, pos: QtCore.QPoint) -> None:
+        self.menu_requested.emit(self.slot, self.mapToGlobal(pos))
+
+
+class DashboardSlotFrame(QtWidgets.QFrame):
+    dropped = QtCore.Signal(str, str)
+
+    def __init__(self, slot: str, parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self.slot = slot
+        self.setAcceptDrops(True)
+        self.setProperty("class", "glass")
+        self._default_style = self.styleSheet()
+        self._current_widget: QtWidgets.QWidget | None = None
+        self._layout = QtWidgets.QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+
+    def set_widget(self, widget: QtWidgets.QWidget | None) -> None:
+        if widget is self._current_widget:
+            return
+        self._clear_layout()
+        self._current_widget = widget
+        if widget:
+            widget.setParent(self)
+            widget.show()
+            self._layout.addWidget(widget)
+
+    def _clear_layout(self) -> None:
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        if self._current_widget:
+            self._current_widget.setParent(None)
+            self._current_widget = None
+
+    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:  # noqa: N802
+        if event.mimeData().hasFormat(MIME_TYPE):
+            event.acceptProposedAction()
+            self.setStyleSheet("border: 2px dashed #38bdf8;")
+
+    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:  # noqa: N802
+        if event.mimeData().hasFormat(MIME_TYPE):
+            event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event: QtGui.QDragLeaveEvent) -> None:  # noqa: N802
+        self.setStyleSheet(self._default_style)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event: QtGui.QDropEvent) -> None:  # noqa: N802
+        if event.mimeData().hasFormat(MIME_TYPE):
+            key = bytes(event.mimeData().data(MIME_TYPE)).decode()
+            self.dropped.emit(self.slot, key)
+            event.acceptProposedAction()
+        self.setStyleSheet(self._default_style)
+
 
 class SectionDragger(QtCore.QObject):
     """Event filter that turns any widget into a draggable tile for layout edits."""
 
-    def __init__(self, key: str, parent: QtWidgets.QWidget):
-        super().__init__(parent)
+    def __init__(self, key: str, target: QtWidgets.QWidget):
+        super().__init__(target)
         self.key = key
+        self.target = target
         self._press_pos: QtCore.QPoint | None = None
 
+    def _map_to_target(self, obj: QtCore.QObject, pos: QtCore.QPoint) -> QtCore.QPoint:
+        if isinstance(obj, QtWidgets.QWidget) and obj is not self.target:
+            return self.target.mapFrom(obj, pos)
+        return pos
+
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
-        if event.type() == QtCore.QEvent.MouseButtonPress and isinstance(
-            event, QtGui.QMouseEvent
-        ):
-            if event.button() == QtCore.Qt.LeftButton:
-                self._press_pos = event.pos()
-            return False
+        if isinstance(event, QtGui.QMouseEvent):
+            local_pos = self._map_to_target(obj, event.pos())
+            if event.type() == QtCore.QEvent.MouseButtonPress:
+                if event.button() == QtCore.Qt.LeftButton:
+                    self._press_pos = local_pos
+                return False
 
-        if event.type() == QtCore.QEvent.MouseMove and isinstance(
-            event, QtGui.QMouseEvent
-        ):
-            if not (event.buttons() & QtCore.Qt.LeftButton):
-                return False
-            if self._press_pos is None:
-                return False
-            if (event.pos() - self._press_pos).manhattanLength() < QtWidgets.QApplication.startDragDistance():
-                return False
-            drag = QtGui.QDrag(obj)
-            mime = QtCore.QMimeData()
-            mime.setData(MIME_TYPE, self.key.encode())
-            drag.setMimeData(mime)
-            if isinstance(obj, QtWidgets.QWidget):
-                drag.setPixmap(obj.grab())
-            drag.exec(QtCore.Qt.MoveAction)
-            return True
+            if event.type() == QtCore.QEvent.MouseMove:
+                if not (event.buttons() & QtCore.Qt.LeftButton):
+                    return False
+                if self._press_pos is None:
+                    return False
+                if (local_pos - self._press_pos).manhattanLength() < QtWidgets.QApplication.startDragDistance():
+                    return False
+                drag = QtGui.QDrag(self.target)
+                mime = QtCore.QMimeData()
+                mime.setData(MIME_TYPE, self.key.encode())
+                drag.setMimeData(mime)
+                drag.setPixmap(self.target.grab())
+                drag.setHotSpot(QtCore.QPoint(self.target.width() // 2, self.target.height() // 2))
+                drag.exec(QtCore.Qt.MoveAction)
+                return True
 
-        if event.type() == QtCore.QEvent.MouseButtonRelease:
-            self._press_pos = None
+            if event.type() == QtCore.QEvent.MouseButtonRelease:
+                self._press_pos = None
         return False
 
 
@@ -182,8 +247,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.auto_detect_kline = auto_detect_kline
         self.setWindowTitle("Vivaro Cluster")
         self.setMinimumSize(1280, 720)
-        self.setStyleSheet(GLOBAL_STYLES)
         self.setAttribute(QtCore.Qt.WA_AcceptTouchEvents, True)
+        self.accent_palettes: dict[str, tuple[str, str]] = {
+            "Cyan glow": ("#4fc3f7", "#6ee7ff"),
+            "Lime pulse": ("#84cc16", "#22d3ee"),
+            "Amber dusk": ("#fbbf24", "#f97316"),
+            "Rose nebula": ("#fb7185", "#c084fc"),
+        }
+        self.ui_customization: dict[str, float | bool] = {
+            "accent": "#4fc3f7",
+            "accent_alt": "#6ee7ff",
+            "background_strength": 65,
+            "glass_opacity": 18,
+            "corner_radius": 18,
+            "ui_scale": 100,
+            "glow_enabled": True,
+        }
+        self.custom_slider_labels: dict[str, QtWidgets.QLabel] = {}
+        self.custom_slider_meta: dict[str, str] = {}
+        self.custom_sliders: dict[str, QtWidgets.QSlider] = {}
+        self._apply_stylesheet()
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setTabPosition(QtWidgets.QTabWidget.North)
@@ -280,6 +363,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gauges_row.addWidget(self.speed_gauge, 1)
         self.gauges_row.addWidget(self.rpm_gauge, 1)
 
+        self._bind_gauge_to_hero(self.speed_gauge, self.speed_hero, "{value:,.0f}")
+        self._bind_gauge_to_hero(self.rpm_gauge, self.rpm_hero, "{value:,.0f}")
+
         self.gauge_widget = gauge_frame
 
         self.assist_panel = self._build_assist_panel()
@@ -291,12 +377,17 @@ class MainWindow(QtWidgets.QMainWindow):
             "assist": self.assist_panel,
             "status": self.status_panel,
         }
+        self.section_titles = {
+            "hero": "Hero row",
+            "gauges": "Gauges",
+            "assist": "Assist cards",
+            "status": "Status chips",
+        }
         self.section_draggers: dict[str, SectionDragger] = {}
         for key, widget in self.section_widgets.items():
             widget.setCursor(QtCore.Qt.OpenHandCursor)
-            dragger = SectionDragger(key, widget)
-            widget.installEventFilter(dragger)
-            self.section_draggers[key] = dragger
+            self._register_section_dragger(key, widget)
+            self._attach_section_context_menu(key, widget)
         self.slot_positions: dict[str, tuple[int, int, int, int]] = {
             "slot1": (0, 0, 1, 2),
             "slot2": (1, 0, 1, 2),
@@ -310,6 +401,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "slot4": "status",
         }
         self.drop_zones: dict[str, DropZone] = {}
+        self.slot_frames: dict[str, DashboardSlotFrame] = {}
         self._apply_slot_assignments()
         return central
 
@@ -392,6 +484,40 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.layout_mode_combo.currentTextChanged.connect(self._apply_layout_choice)
         layout.addWidget(self.layout_mode_combo)
+
+        appearance_label = QtWidgets.QLabel("Appearance")
+        appearance_label.setProperty("role", "label")
+        layout.addWidget(appearance_label)
+
+        appearance_form = QtWidgets.QFormLayout()
+        appearance_form.setLabelAlignment(QtCore.Qt.AlignRight)
+
+        self.accent_combo = QtWidgets.QComboBox()
+        self.accent_combo.addItems(list(self.accent_palettes.keys()))
+        self.accent_combo.setCurrentText(self._current_accent_choice())
+        self.accent_combo.currentTextChanged.connect(self._on_accent_palette_changed)
+        appearance_form.addRow("Accent palette", self.accent_combo)
+
+        background_row = self._create_custom_slider_row("background_strength", 35, 90, "%")
+        appearance_form.addRow("Background glow", background_row)
+
+        glass_row = self._create_custom_slider_row("glass_opacity", 6, 45, "%")
+        appearance_form.addRow("Glass depth", glass_row)
+
+        radius_row = self._create_custom_slider_row("corner_radius", 12, 32, "px")
+        appearance_form.addRow("Corner radius", radius_row)
+
+        scale_row = self._create_custom_slider_row("ui_scale", 90, 120, "%")
+        appearance_form.addRow("Interface scale", scale_row)
+
+        layout.addLayout(appearance_form)
+
+        glow_toggle = QtWidgets.QCheckBox("Neon glow layers")
+        glow_toggle.setChecked(bool(self.ui_customization.get("glow_enabled", True)))
+        glow_toggle.stateChanged.connect(
+            lambda state: self._on_glow_toggled(state == QtCore.Qt.Checked)
+        )
+        layout.addWidget(glow_toggle)
 
         layout.addStretch()
         return panel
@@ -516,6 +642,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for slot, (row, col, _, colspan) in self.slot_positions.items():
             zone = DropZone(slot, zone_titles.get(slot, slot.title()))
             zone.dropped.connect(self._on_tile_dropped)
+            zone.menu_requested.connect(self._show_slot_context_menu)
             self.drop_zones[slot] = zone
             canvas.addWidget(zone, row, col, 1, colspan)
         layout.addLayout(canvas)
@@ -615,6 +742,14 @@ class MainWindow(QtWidgets.QMainWindow):
         card.unit_label = unit_label  # type: ignore[attr-defined]
         return card
 
+    def _bind_gauge_to_hero(
+        self, gauge: GaugeWidget, card: QtWidgets.QWidget, fmt: str
+    ) -> None:
+        def update(value: float) -> None:
+            card.value_label.setText(fmt.format(value=value))  # type: ignore[attr-defined]
+
+        gauge.displayValueChanged.connect(update)
+
     def _make_small_chip(
         self, title: str, value: str, icon: str = ""
     ) -> QtWidgets.QFrame:
@@ -682,9 +817,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_chip(self.assist_chip, assist_text)
         self.hardware_status_label.setText(f"Status: {assist_text}")
 
-        # hero row mirrors the gauges with a clean digital readout
-        self.speed_hero.value_label.setText(f"{state.speed_mph:,.0f}")  # type: ignore[attr-defined]
-        self.rpm_hero.value_label.setText(f"{state.rpm:,}")  # type: ignore[attr-defined]
         self.battery_hero.value_label.setText(f"{state.battery_level}%")  # type: ignore[attr-defined]
         self.temp_hero.value_label.setText(f"{state.ambient_temp_f:.0f}°F")  # type: ignore[attr-defined]
         route_text = f"{heading_symbol} {distance}" if distance else "No route"
@@ -783,8 +915,10 @@ class MainWindow(QtWidgets.QMainWindow):
             widget = self.section_widgets.get(key)
             if not widget:
                 continue
+            frame = self._ensure_slot_frame(slot)
+            frame.set_widget(widget)
             row, col, rowspan, colspan = self.slot_positions[slot]
-            self.dashboard_grid.addWidget(widget, row, col, rowspan, colspan)
+            self.dashboard_grid.addWidget(frame, row, col, rowspan, colspan)
 
         self._refresh_dropzones()
 
@@ -799,26 +933,195 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_dropzones(self) -> None:
         if not hasattr(self, "drop_zones"):
             return
-        title_lookup = {
-            "hero": "Hero row",
-            "gauges": "Gauges",
-            "assist": "Assist cards",
-            "status": "Status chips",
-        }
         for slot, zone in self.drop_zones.items():
             key = self.slot_assignments.get(slot, "")
-            label = title_lookup.get(key, "Empty")
+            label = self.section_titles.get(key, "Empty")
             zone.set_assigned(label)
 
     def _on_tile_dropped(self, slot: str, key: str) -> None:
-        if key not in self.section_widgets:
+        self._assign_section_to_slot(slot, key)
+
+    def _ensure_slot_frame(self, slot: str) -> DashboardSlotFrame:
+        frame = self.slot_frames.get(slot)
+        if frame is None:
+            frame = DashboardSlotFrame(slot)
+            frame.dropped.connect(self._on_dashboard_slot_drop)
+            self.slot_frames[slot] = frame
+        return frame
+
+    def _on_dashboard_slot_drop(self, slot: str, key: str) -> None:
+        self._assign_section_to_slot(slot, key)
+
+    def _register_section_dragger(self, key: str, widget: QtWidgets.QWidget) -> None:
+        dragger = SectionDragger(key, widget)
+        self.section_draggers[key] = dragger
+        self._install_dragger_filters(widget, dragger)
+
+    def _install_dragger_filters(
+        self, widget: QtWidgets.QWidget, dragger: SectionDragger
+    ) -> None:
+        widget.installEventFilter(dragger)
+        for child in widget.findChildren(QtWidgets.QWidget):
+            child.installEventFilter(dragger)
+
+    def _attach_section_context_menu(self, key: str, widget: QtWidgets.QWidget) -> None:
+        widget.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        widget.customContextMenuRequested.connect(
+            lambda pos, key=key, widget=widget: self._show_section_context_menu(
+                key, widget.mapToGlobal(pos)
+            )
+        )
+
+    def _show_section_context_menu(self, key: str, global_pos: QtCore.QPoint) -> None:
+        slot = next((s for s, v in self.slot_assignments.items() if v == key), None)
+        if not slot:
+            return
+        self._show_slot_context_menu(slot, global_pos)
+
+    def _show_slot_context_menu(self, slot: str, global_pos: QtCore.QPoint) -> None:
+        if slot not in self.slot_assignments:
+            return
+        menu = QtWidgets.QMenu(self)
+        current = self.slot_assignments.get(slot, "")
+        for key, title in self.section_titles.items():
+            action = menu.addAction(title)
+            action.setCheckable(True)
+            action.setChecked(current == key)
+            action.triggered.connect(
+                lambda checked, slot=slot, key=key: self._assign_section_to_slot(slot, key)
+            )
+        menu.exec(global_pos)
+
+    def _assign_section_to_slot(self, slot: str, key: str) -> None:
+        if key not in self.section_widgets or slot not in self.slot_assignments:
+            return
+        if self.slot_assignments.get(slot) == key:
             return
         existing_slot = next((s for s, v in self.slot_assignments.items() if v == key), None)
-        target_previous = self.slot_assignments.get(slot)
-        if existing_slot:
+        target_previous = self.slot_assignments.get(slot, "")
+        if existing_slot and existing_slot != slot:
             self.slot_assignments[existing_slot] = target_previous or ""
         self.slot_assignments[slot] = key
         self._apply_slot_assignments()
+
+    def _create_custom_slider_row(
+        self, key: str, minimum: int, maximum: int, suffix: str
+    ) -> QtWidgets.QWidget:
+        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        slider.setRange(minimum, maximum)
+        current_value = int(self.ui_customization.get(key, minimum))
+        slider.setValue(current_value)
+        label = QtWidgets.QLabel()
+        label.setProperty("class", "muted")
+        container = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(container)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(slider, 1)
+        row.addWidget(label)
+        self.custom_sliders[key] = slider
+        self.custom_slider_labels[key] = label
+        self.custom_slider_meta[key] = suffix
+        slider.valueChanged.connect(lambda value, k=key: self._on_custom_slider_changed(k, value))
+        self._on_custom_slider_changed(key, current_value, apply_style=False)
+        return container
+
+    def _on_custom_slider_changed(
+        self, key: str, value: int, *, apply_style: bool = True
+    ) -> None:
+        label = self.custom_slider_labels.get(key)
+        suffix = self.custom_slider_meta.get(key, "")
+        if label:
+            label.setText(f"{value}{suffix}")
+        self.ui_customization[key] = value
+        if apply_style:
+            self._apply_stylesheet()
+
+    def _current_accent_choice(self) -> str:
+        current = (
+            self.ui_customization.get("accent"),
+            self.ui_customization.get("accent_alt"),
+        )
+        for name, colors in self.accent_palettes.items():
+            if colors == current:
+                return name
+        return next(iter(self.accent_palettes))
+
+    def _on_accent_palette_changed(self, name: str) -> None:
+        colors = self.accent_palettes.get(name)
+        if not colors:
+            return
+        self.ui_customization["accent"], self.ui_customization["accent_alt"] = colors
+        self._apply_stylesheet()
+
+    def _on_glow_toggled(self, enabled: bool) -> None:
+        self.ui_customization["glow_enabled"] = enabled
+        self._apply_stylesheet()
+
+    def _apply_stylesheet(self) -> None:
+        accent = str(self.ui_customization.get("accent", "#4fc3f7"))
+        accent_alt = str(self.ui_customization.get("accent_alt", "#6ee7ff"))
+        background_strength = int(self.ui_customization.get("background_strength", 65))
+        glow_enabled = bool(self.ui_customization.get("glow_enabled", True))
+        glass_value = int(self.ui_customization.get("glass_opacity", 18))
+        radius = int(self.ui_customization.get("corner_radius", 18))
+        font_scale = int(self.ui_customization.get("ui_scale", 100)) / 100
+        background_strength = max(25, min(90, background_strength))
+        glass_alpha = max(2, min(60, glass_value)) / 100
+        radius = max(10, min(36, radius))
+        body_font = max(13, int(16 * font_scale))
+        title_font = max(22, int(34 * font_scale))
+        subtitle_font = max(14, int(20 * font_scale))
+        value_font = max(20, int(26 * font_scale))
+        glow_alpha = 0.22 if glow_enabled else 0.08
+        panel_border = 0.18 if glow_enabled else 0.05
+        button_radius = max(8, radius - 4)
+        gradient_inner = background_strength / 100
+        custom = textwrap.dedent(
+            f"""
+            QWidget {{
+                font-size: {body_font}px;
+            }}
+            QLabel[role="title"] {{
+                font-size: {title_font}px;
+            }}
+            QLabel[role="subtitle"] {{
+                font-size: {subtitle_font}px;
+            }}
+            QLabel[role="value"] {{
+                font-size: {value_font}px;
+            }}
+            QMainWindow {{
+                background: radial-gradient(circle at 30% 20%, rgba(13, 23, 45, {gradient_inner}), rgba(4, 6, 13, 0.98));
+            }}
+            .panel {{
+                border-radius: {radius}px;
+                background: rgba(15, 23, 42, {glass_alpha});
+                border: 1px solid rgba(255, 255, 255, {panel_border});
+            }}
+            .glass {{
+                border-radius: {radius + 2}px;
+                background: rgba(148, 163, 184, {glass_alpha * (0.5 + glow_alpha)});
+                border: 1px solid rgba(255,255,255,{panel_border * 0.6});
+            }}
+            .hero {{
+                border-radius: {radius}px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(15, 24, 40, {glass_alpha + 0.1}), stop:1 rgba(10, 16, 32, {glass_alpha + 0.05}));
+            }}
+            QPushButton {{
+                border-radius: {button_radius}px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {accent}, stop:1 {accent_alt});
+                border: 1px solid rgba(255,255,255,0.08);
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {accent_alt}, stop:1 {accent});
+            }}
+            QListWidget[class="panel"] {{
+                border-radius: {radius}px;
+                background: rgba(3, 6, 15, {glass_alpha});
+            }}
+            """
+        )
+        self.setStyleSheet(GLOBAL_STYLES + custom)
 
     def _normalize_color(self, value: str) -> str:
         value = value.strip()
@@ -839,7 +1142,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "Current: "
             f"BCM {self.current_config.bcm_can_channel or 'sim'} @ {self.current_config.bcm_can_bitrate} | "
             f"K-Line {self.current_config.kline_port or 'sim'} @ {self.current_config.kline_baud} | "
-            f"Simulator {'on' if self.current_config.enable_simulator else 'off'}"
+            f"Simulator {'on' if self.current_config.enable_simulator else 'off'} | "
+            f"Auto connect {'on' if getattr(self.current_config, 'auto_connect', True) else 'off'}"
         )
 
     def _open_provider_center(self) -> None:
@@ -849,7 +1153,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout = QtWidgets.QVBoxLayout(dialog)
         layout.setSpacing(12)
-
         bcm_group = QtWidgets.QGroupBox("BCM (Waveshare USB-CAN-A)")
         bcm_form = QtWidgets.QFormLayout(bcm_group)
 
@@ -864,21 +1167,7 @@ class MainWindow(QtWidgets.QMainWindow):
         bcm_form.addRow("Bitrate", bcm_bitrate_input)
 
         bcm_detect_btn = QtWidgets.QPushButton("Detect Waveshare")
-
-        def detect_bcm() -> None:
-            detected = auto_detect_bcm_port("")
-            if detected:
-                bcm_port_combo.setCurrentText(detected)
-            else:
-                QtWidgets.QMessageBox.information(
-                    dialog,
-                    "Auto-detect",
-                    "No Waveshare USB-CAN adapter found. Check BCM wiring and USB.",
-                )
-
-        bcm_detect_btn.clicked.connect(detect_bcm)
         bcm_form.addRow("Auto", bcm_detect_btn)
-
         layout.addWidget(bcm_group)
 
         kline_group = QtWidgets.QGroupBox("K-Line (ELM)")
@@ -893,19 +1182,6 @@ class MainWindow(QtWidgets.QMainWindow):
         kline_form.addRow("Baud", kline_baud_input)
 
         kline_detect_btn = QtWidgets.QPushButton("Detect ELM")
-
-        def detect_kline() -> None:
-            detected = self.auto_detect_kline("")
-            if detected:
-                kline_port_combo.setCurrentText(detected)
-            else:
-                QtWidgets.QMessageBox.information(
-                    dialog,
-                    "Auto-detect",
-                    "No ELM/K-Line adapter found. Check USB connections.",
-                )
-
-        kline_detect_btn.clicked.connect(detect_kline)
         kline_form.addRow("Auto", kline_detect_btn)
 
         layout.addWidget(kline_group)
@@ -920,11 +1196,89 @@ class MainWindow(QtWidgets.QMainWindow):
         note.setProperty("class", "muted")
         layout.addWidget(note)
 
+        auto_connect_toggle = QtWidgets.QCheckBox("Auto connect when launching dashboard")
+        auto_connect_toggle.setChecked(getattr(self.current_config, "auto_connect", True))
+
+        console_label = QtWidgets.QLabel("Port diagnostics")
+        console_label.setProperty("role", "label")
+        layout.addWidget(console_label)
+
+        console = QtWidgets.QPlainTextEdit()
+        console.setReadOnly(True)
+        console.setMinimumHeight(140)
+        console.setMaximumBlockCount(400)
+        console.setProperty("class", "panel")
+        layout.addWidget(console)
+
+        def append_log(message: str) -> None:
+            timestamp = QtCore.QTime.currentTime().toString("HH:mm:ss")
+            console.appendPlainText(f"[{timestamp}] {message}")
+            console.verticalScrollBar().setValue(console.verticalScrollBar().maximum())
+
+        append_log("Opened provider diagnostics console")
+
+        def detect_bcm() -> None:
+            append_log("Detecting BCM adapter...")
+            try:
+                detected = auto_detect_bcm_port("")
+            except Exception as exc:  # noqa: BLE001
+                append_log(f"BCM auto-detect failed: {exc}")
+                QtWidgets.QMessageBox.warning(
+                    dialog,
+                    "Auto-detect",
+                    "BCM auto-detect failed. Check diagnostics for details.",
+                )
+                return
+            if detected:
+                bcm_port_combo.setCurrentText(detected)
+                append_log(f"BCM port detected: {detected}")
+            else:
+                append_log("BCM auto-detect: no adapter found")
+                QtWidgets.QMessageBox.information(
+                    dialog,
+                    "Auto-detect",
+                    "No Waveshare USB-CAN adapter found. Check BCM wiring and USB.",
+                )
+
+        bcm_detect_btn.clicked.connect(detect_bcm)
+
+        def detect_kline() -> None:
+            append_log("Detecting K-Line adapter...")
+            try:
+                detected = self.auto_detect_kline("")
+            except Exception as exc:  # noqa: BLE001
+                append_log(f"K-Line auto-detect failed: {exc}")
+                QtWidgets.QMessageBox.warning(
+                    dialog,
+                    "Auto-detect",
+                    "K-Line auto-detect failed. Check diagnostics for details.",
+                )
+                return
+            if detected:
+                kline_port_combo.setCurrentText(detected)
+                append_log(f"K-Line port detected: {detected}")
+            else:
+                append_log("K-Line auto-detect: no adapter found")
+                QtWidgets.QMessageBox.information(
+                    dialog,
+                    "Auto-detect",
+                    "No ELM/K-Line adapter found. Check USB connections.",
+                )
+
+        kline_detect_btn.clicked.connect(detect_kline)
+
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
         )
 
-        def accept() -> None:
+        action_row = QtWidgets.QHBoxLayout()
+        action_row.addWidget(auto_connect_toggle)
+        action_row.addStretch()
+        connect_btn = QtWidgets.QPushButton("Connect now")
+        action_row.addWidget(connect_btn)
+        layout.addLayout(action_row)
+
+        def persist_inputs() -> None:
             self.current_config.bcm_can_channel = (
                 bcm_port_combo.currentData() or bcm_port_combo.currentText()
             ).strip()
@@ -938,19 +1292,39 @@ class MainWindow(QtWidgets.QMainWindow):
                 kline_baud_input.text(), self.current_config.kline_baud
             )
             self.current_config.enable_simulator = sim_toggle.isChecked()
-            self._apply_config_change("Updated provider settings")
-            dialog.accept()
+            self.current_config.auto_connect = auto_connect_toggle.isChecked()
 
-        buttons.accepted.connect(accept)
+        def apply_changes(force_manual: bool, status: str, close_dialog: bool = False) -> None:
+            persist_inputs()
+            append_log(
+                "Applying provider settings "
+                f"(BCM {self.current_config.bcm_can_channel or 'auto'}, "
+                f"K-Line {self.current_config.kline_port or 'auto'}, "
+                f"Simulator {'on' if self.current_config.enable_simulator else 'off'}, "
+                f"Auto connect {'on' if self.current_config.auto_connect else 'off'})"
+            )
+            self._apply_config_change(
+                status,
+                force_connect=force_manual or self.current_config.auto_connect,
+            )
+            append_log("Provider settings applied")
+            if close_dialog:
+                dialog.accept()
+
+        buttons.accepted.connect(lambda: apply_changes(False, "Updated provider settings", True))
         buttons.rejected.connect(dialog.reject)
+        connect_btn.clicked.connect(lambda: apply_changes(True, "Manual connect requested"))
         layout.addWidget(buttons)
 
         dialog.exec()
 
-    def _apply_config_change(self, status: str) -> None:
+    def _apply_config_change(self, status: str, *, force_connect: bool = False) -> None:
         try:
-            self.reconfigure_callback(self.current_config)
-            self.hardware_status_label.setText(f"Status: {status}")
+            self.reconfigure_callback(self.current_config, force_connect)
+            summary = status
+            if not (force_connect or getattr(self.current_config, "auto_connect", True)):
+                summary = "Auto connect disabled; waiting for Connect"
+            self.hardware_status_label.setText(f"Status: {summary}")
             if hasattr(self, "port_summary"):
                 self.port_summary.setText(self._port_summary_text())
         except Exception as exc:  # noqa: BLE001

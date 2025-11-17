@@ -64,6 +64,7 @@ class GaugeWidget(QtWidgets.QWidget):
         self._anim = QtCore.QPropertyAnimation(self, b"displayValue")
         self._anim.setDuration(450)
         self._anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._anim_target = 0.0
 
         self.setMinimumSize(260, 260)
         self.setSizePolicy(
@@ -121,6 +122,7 @@ class GaugeWidget(QtWidgets.QWidget):
         # Keep the animated value within the new scale.
         self._display_value = min(self._display_value, self.maximum)
         self._value = min(self._value, self.maximum)
+        self._anim_target = min(self._anim_target, self.maximum)
         self.update()
 
     def _palette(self, style_name: str | None = None) -> dict[str, str]:
@@ -186,15 +188,36 @@ class GaugeWidget(QtWidgets.QWidget):
         clamped = min(self.maximum, incoming)
 
         if math.isclose(clamped, self._display_value, abs_tol=0.2):
-            self._display_value = clamped
+            self._anim.stop()
             self._value = clamped
-            self.update()
+            self.setDisplayValue(clamped)
+            self._anim_target = clamped
+            return
+
+        if clamped <= self._display_value:
+            self._anim.stop()
+            self._value = clamped
+            self.setDisplayValue(clamped)
+            self._anim_target = clamped
+            return
+
+        if self._anim.state() == QtCore.QAbstractAnimation.Running:
+            if clamped < self._anim_target:
+                self._anim.stop()
+                self._value = clamped
+                self.setDisplayValue(clamped)
+                self._anim_target = clamped
+                return
+            if clamped > self._anim_target:
+                self._anim.setEndValue(clamped)
+                self._anim_target = clamped
             return
 
         self._value = clamped
         self._anim.stop()
         self._anim.setStartValue(self._display_value)
         self._anim.setEndValue(clamped)
+        self._anim_target = clamped
         self._anim.start()
 
     def getDisplayValue(self) -> float:  # noqa: N802
@@ -304,38 +327,42 @@ class GaugeWidget(QtWidgets.QWidget):
             tick_pen = QtGui.QPen(QtGui.QColor(palette["accent_alt"]))
             tick_pen.setWidth(2)
             painter.setPen(tick_pen)
-            ticks = max(1, len(self._tick_values) - 1)
-            for i, tick_value in enumerate(self._tick_values):
-                angle = math.radians(start_angle + (span_angle / ticks) * i)
-                inner = QtCore.QPointF(
-                    math.cos(angle) * (radius - pen_width * 1.5),
-                    math.sin(angle) * (radius - pen_width * 1.5),
-                )
-                outer = QtCore.QPointF(
-                    math.cos(angle) * (radius - pen_width * 0.5),
-                    math.sin(angle) * (radius - pen_width * 0.5),
-                )
-                painter.drawLine(inner, outer)
+            if self._tick_values:
+                for tick_value in self._tick_values:
+                    ratio = (tick_value / self.maximum) if self.maximum else 0.0
+                    ratio = max(0.0, min(1.0, ratio))
+                    angle = math.radians(start_angle - (span_angle * ratio))
+                    inner = QtCore.QPointF(
+                        math.cos(angle) * (radius - pen_width * 1.5),
+                        math.sin(angle) * (radius - pen_width * 1.5),
+                    )
+                    outer = QtCore.QPointF(
+                        math.cos(angle) * (radius - pen_width * 0.5),
+                        math.sin(angle) * (radius - pen_width * 0.5),
+                    )
+                    painter.drawLine(inner, outer)
 
-            label_font = QtGui.QFont("Segoe UI", 11, QtGui.QFont.DemiBold)
-            painter.setFont(label_font)
-            painter.setPen(QtGui.QColor(palette["text"]).lighter(115))
-            label_radius = radius - pen_width * 2.6
-            for i, tick_value in enumerate(self._tick_values):
-                angle = math.radians(start_angle + (span_angle / ticks) * i)
-                pos = QtCore.QPointF(
-                    math.cos(angle) * label_radius,
-                    math.sin(angle) * label_radius,
-                )
-                painter.save()
-                painter.translate(pos)
-                painter.rotate((math.degrees(angle) + 90))
-                painter.drawText(
-                    QtCore.QRectF(-16, -10, 32, 20),
-                    QtCore.Qt.AlignCenter,
-                    f"{tick_value:,.0f}",
-                )
-                painter.restore()
+                label_font = QtGui.QFont("Segoe UI", 11, QtGui.QFont.DemiBold)
+                painter.setFont(label_font)
+                painter.setPen(QtGui.QColor(palette["text"]).lighter(115))
+                label_radius = radius - pen_width * 2.6
+                for tick_value in self._tick_values:
+                    ratio = (tick_value / self.maximum) if self.maximum else 0.0
+                    ratio = max(0.0, min(1.0, ratio))
+                    angle = math.radians(start_angle - (span_angle * ratio))
+                    pos = QtCore.QPointF(
+                        math.cos(angle) * label_radius,
+                        math.sin(angle) * label_radius,
+                    )
+                    painter.save()
+                    painter.translate(pos)
+                    painter.rotate((math.degrees(angle) + 90))
+                    painter.drawText(
+                        QtCore.QRectF(-16, -10, 32, 20),
+                        QtCore.Qt.AlignCenter,
+                        f"{tick_value:,.0f}",
+                    )
+                    painter.restore()
             painter.restore()
 
             # value text

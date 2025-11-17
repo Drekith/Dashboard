@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path
 
@@ -7,6 +8,39 @@ if __package__ in (None, ""):
     project_root = Path(__file__).resolve().parent.parent
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
+
+CONFLICT_MARKER = re.compile(r"^\s*(<<<<<<<|=======|>>>>>>>)( |$)", re.MULTILINE)
+
+
+def _ensure_no_conflicts() -> None:
+    """Fail fast if merge-conflict markers remain in source files.
+
+    Seeing ``SyntaxError: <<<<<<< ours`` on import is a signal that a merge
+    artifact slipped through. Surfacing a clearer error before importing any
+    dashboard modules helps diagnose and repair broken checkouts quickly.
+    """
+
+    source_root = Path(__file__).resolve().parent.parent
+    offenders: list[Path] = []
+    for path in source_root.rglob("*.py"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if path == Path(__file__).resolve():
+            continue
+        if CONFLICT_MARKER.search(text):
+            offenders.append(path.relative_to(source_root))
+
+    if offenders:
+        joined = ", ".join(str(p) for p in sorted(offenders))
+        raise RuntimeError(
+            "Merge conflict markers detected; clean these files before running: "
+            f"{joined}"
+        )
+
+
+_ensure_no_conflicts()
 
 import importlib.util
 
@@ -36,8 +70,21 @@ def _attempt_provider(build_fn, pipeline: DataPipeline, label: str):
         )
         return None
     return provider
-def build_providers(config: ProviderConfig, pipeline: DataPipeline):
+
+
+def build_providers(
+    config: ProviderConfig, pipeline: DataPipeline, *, force_connect: bool = False
+):
     providers = []
+    auto_allowed = getattr(config, "auto_connect", True)
+    should_connect = force_connect or auto_allowed
+    if not should_connect:
+        message = "Auto connect disabled; open provider menu and press Connect."
+        pipeline.apply_update(VehicleUpdate(ambient_assist_message=message))
+        if config.enable_simulator:
+            providers.append(SimulatorProvider(on_update=pipeline.apply_update))
+        return providers
+
     if config.bcm_can_channel:
         bcm_provider = _attempt_provider(
             lambda: BcmCanProvider(
@@ -89,12 +136,22 @@ def build_pipeline(config: ProviderConfig | None = None) -> tuple[DataPipeline, 
     if not config.bcm_can_channel:
         config.bcm_can_channel = auto_detect_bcm_port()
     pipeline = DataPipeline([])
-    pipeline.providers = build_providers(config, pipeline)
+    pipeline.providers = build_providers(
+        config, pipeline, force_connect=config.auto_connect
+    )
     return pipeline, config
 
 
-def reconfigure_pipeline(pipeline: DataPipeline, config: ProviderConfig) -> None:
-    pipeline.replace_providers(build_providers(config, pipeline))
+def reconfigure_pipeline(
+    pipeline: DataPipeline, config: ProviderConfig, *, force_connect: bool = False
+) -> None:
+    pipeline.replace_providers(
+        build_providers(
+            config,
+            pipeline,
+            force_connect=force_connect or config.auto_connect,
+        )
+    )
 
 
 def main() -> None:
@@ -103,7 +160,9 @@ def main() -> None:
     window = MainWindow(
         pipeline,
         config=config,
-        reconfigure_callback=lambda cfg: reconfigure_pipeline(pipeline, cfg),
+        reconfigure_callback=lambda cfg, force=False: reconfigure_pipeline(
+            pipeline, cfg, force_connect=force
+        ),
         auto_detect_kline=auto_detect_kline_port,
     )
     pipeline.start()
