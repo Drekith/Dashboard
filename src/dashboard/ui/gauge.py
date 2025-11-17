@@ -49,15 +49,32 @@ class GaugeWidget(QtWidgets.QWidget):
         self._anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
 
         self.setMinimumSize(260, 260)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        )
         self.setStyle(style)
 
+    def _palette(self, style_name: str | None = None) -> dict[str, str]:
+        """Return a validated palette, falling back to the default."""
+
+        if style_name and style_name in self.STYLES:
+            palette = self.STYLES[style_name]
+        elif self._style_name and self._style_name in self.STYLES:
+            palette = self.STYLES[self._style_name]
+        else:
+            palette = self.STYLES["neo"]
+
+        # Ensure required keys exist to avoid blank paints when a custom style
+        # was partially provided.
+        required_keys = {"track", "glow", "accent", "accent_alt", "text"}
+        if not required_keys.issubset(palette):
+            return self.STYLES["neo"]
+        return palette
+
     def setStyle(self, style_name: str) -> None:  # noqa: N802
-        style = self.STYLES.get(style_name)
-        if style is None:
-            # Unknown styles fall back to the existing palette to avoid resets.
-            return
+        style = self._palette(style_name)
         self._style = style
-        self._style_name = style_name
+        self._style_name = style_name if style_name in self.STYLES else "neo"
         self.update()
 
     def setCustomStyle(self, palette: dict[str, str], name: str = "custom") -> None:  # noqa: N802
@@ -68,7 +85,9 @@ class GaugeWidget(QtWidgets.QWidget):
 
         required_keys = {"track", "glow", "accent", "accent_alt", "text"}
         if not required_keys.issubset(palette):
-            return
+            # Merge any provided keys with a fallback to keep gauges visible.
+            merged = {**self.STYLES["neo"], **palette}
+            palette = {key: merged[key] for key in required_keys}
 
         # Register so style selectors can reference the custom entry.
         self.STYLES[name] = palette
@@ -117,7 +136,9 @@ class GaugeWidget(QtWidgets.QWidget):
         pen_width = 16
 
         # background track
-        track_pen = QtGui.QPen(QtGui.QColor(self._style["track"]))
+        palette = self._palette()
+
+        track_pen = QtGui.QPen(QtGui.QColor(palette["track"]))
         track_pen.setWidth(pen_width)
         track_pen.setCapStyle(QtCore.Qt.RoundCap)
         painter.setPen(track_pen)
@@ -130,7 +151,7 @@ class GaugeWidget(QtWidgets.QWidget):
         )
 
         # glow layer
-        glow_pen = QtGui.QPen(QtGui.QColor(self._style["glow"]))
+        glow_pen = QtGui.QPen(QtGui.QColor(palette["glow"]))
         glow_pen.setWidth(pen_width + 8)
         glow_pen.setCapStyle(QtCore.Qt.RoundCap)
         painter.setPen(glow_pen)
@@ -149,9 +170,9 @@ class GaugeWidget(QtWidgets.QWidget):
         ratio = (self._display_value / self.maximum) if self.maximum else 0
         value_angle = span_angle * ratio
         gradient = QtGui.QConicalGradient(center, -start_angle)
-        gradient.setColorAt(0.0, QtGui.QColor(self._style["accent"]))
-        gradient.setColorAt(0.5, QtGui.QColor(self._style["accent_alt"]))
-        gradient.setColorAt(1.0, QtGui.QColor(self._style["accent"]))
+        gradient.setColorAt(0.0, QtGui.QColor(palette["accent"]))
+        gradient.setColorAt(0.5, QtGui.QColor(palette["accent_alt"]))
+        gradient.setColorAt(1.0, QtGui.QColor(palette["accent"]))
         value_pen = QtGui.QPen(QtGui.QBrush(gradient), pen_width)
         value_pen.setCapStyle(QtCore.Qt.RoundCap)
         painter.setPen(value_pen)
@@ -166,7 +187,7 @@ class GaugeWidget(QtWidgets.QWidget):
         # tick marks
         painter.save()
         painter.translate(center)
-        tick_pen = QtGui.QPen(QtGui.QColor(self._style["accent_alt"]))
+        tick_pen = QtGui.QPen(QtGui.QColor(palette["accent_alt"]))
         tick_pen.setWidth(2)
         painter.setPen(tick_pen)
         ticks = 8
@@ -184,7 +205,7 @@ class GaugeWidget(QtWidgets.QWidget):
         painter.restore()
 
         # value text
-        painter.setPen(QtGui.QColor(self._style["text"]))
+        painter.setPen(QtGui.QColor(palette["text"]))
         value_font = QtGui.QFont("Segoe UI", 38, QtGui.QFont.Bold)
         painter.setFont(value_font)
         painter.drawText(
