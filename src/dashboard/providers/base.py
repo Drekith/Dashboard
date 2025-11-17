@@ -1,3 +1,5 @@
+import importlib.util
+import platform
 import threading
 from abc import ABC, abstractmethod
 from typing import Callable
@@ -45,3 +47,20 @@ class DataProvider(ABC):
 
     def should_stop(self) -> bool:
         return self._stop_event.is_set()
+
+    def _require_win32com(self) -> None:
+        """Ensure win32com is available on Windows for usb2can backends.
+
+        python-can's usb2can interface depends on the Windows COM bridge. Giving
+        an explicit error message here helps users install ``pywin32`` when
+        running on Windows.
+        """
+
+        if platform.system() != "Windows":
+            return
+
+        spec = importlib.util.find_spec("win32com.client")
+        if spec is None:
+            raise RuntimeError(
+                "win32com.client is missing; install pywin32 to use the Waveshare USB-to-CAN adapter"
+            )

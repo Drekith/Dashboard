@@ -15,6 +15,7 @@ class CanProvider(DataProvider):
         self.bitrate = bitrate
 
     def _build_bus(self) -> Any:
+        self._require_win32com()
         spec = importlib.util.find_spec("can")
         if spec is None:
             raise RuntimeError("python-can is not installed")

@@ -25,6 +25,7 @@ A Windows-focused dashboard that mimics the modern cluster shown in the mock ima
   - `PySide6` for the UI.
   - `python-can` for the Waveshare adapter (`bustype=usb2can`).
   - `pyserial` for the ELM327 USB adapter.
+  - `pywin32` (Windows only) to provide `win32com.client`, which `python-can` uses for USB-to-CAN on Waveshare adapters.
 
 Install them with:
 
@@ -52,6 +53,8 @@ python -m dashboard.main
 ```
 
 Startup will probe for the configured devices. If initialization fails or no hardware is detected, the simulator will activate automatically and display a brief status message in the cluster.
+
+> Windows note: if you see an error about `win32com.client` when starting a Waveshare USB-to-CAN adapter, reinstall dependencies so `pywin32` is present: `pip install -r requirements.txt`.
 
 ### In-app port configuration
 
