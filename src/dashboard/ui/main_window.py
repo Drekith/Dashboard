@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from dashboard.services.data_pipeline import DataPipeline
 from dashboard.state import IndicatorState
 from dashboard.ui.gauge import GaugeWidget
 
@@ -26,7 +27,7 @@ QLineEdit { background: #0f172a; border: 1px solid #1f2937; border-radius: 10px;
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, pipeline):
+    def __init__(self, pipeline: DataPipeline):
         super().__init__()
         self.pipeline = pipeline
         self.setWindowTitle("Vivaro Cluster")
