@@ -866,8 +866,15 @@ class MainWindow(QtWidgets.QMainWindow):
         bcm_detect_btn = QtWidgets.QPushButton("Detect Waveshare")
 
         def detect_bcm() -> None:
-            detected = auto_detect_bcm_port(bcm_port_combo.currentText())
-            bcm_port_combo.setCurrentText(detected or bcm_port_combo.currentText())
+            detected = auto_detect_bcm_port("")
+            if detected:
+                bcm_port_combo.setCurrentText(detected)
+            else:
+                QtWidgets.QMessageBox.information(
+                    dialog,
+                    "Auto-detect",
+                    "No Waveshare USB-CAN adapter found. Check BCM wiring and USB.",
+                )
 
         bcm_detect_btn.clicked.connect(detect_bcm)
         bcm_form.addRow("Auto", bcm_detect_btn)
@@ -888,7 +895,7 @@ class MainWindow(QtWidgets.QMainWindow):
         kline_detect_btn = QtWidgets.QPushButton("Detect ELM")
 
         def detect_kline() -> None:
-            detected = self.auto_detect_kline(kline_port_combo.currentText())
+            detected = self.auto_detect_kline("")
             if detected:
                 kline_port_combo.setCurrentText(detected)
             else:
