@@ -12,7 +12,7 @@ A Windows-focused dashboard that mimics the modern cluster shown in the mock ima
 - Modular data providers for CAN, K-Line, and simulated data. Providers run in background threads and merge into a shared `VehicleState`.
 - Graceful degradation: if hardware is missing, a simulator keeps the UI alive while surfacing status messages.
 - Modernized visuals with animated speed/RPM gauges and configurable colorways ("neo", "contrast", "mono").
-- Tabbed navigation with a **Settings** page (hardware status, layout toggle) and a **Theme Editor** to craft custom gauge palettes without editing code.
+- Tabbed navigation with a **Settings** page (hardware status, layout toggle), a **Layout Editor** for gauge arrangement/visibility, and a **Theme Editor** to craft custom gauge palettes without editing code.
 
 ## Requirements
 
@@ -71,4 +71,5 @@ Startup will probe for the configured devices. If initialization fails or no har
 - Use the **Gauge style** dropdown in the header to swap between the built-in palettes (neo, contrast, mono) without restarting the app.
 - The assist sidebar now focuses on navigation, ambient temperature, battery, and indicator/door status chips, removing unused mock items like radio, drive mode, and altitude displays.
 - Open the **Settings** tab to confirm which data providers are active and flip the layout to swap gauge order.
+- The **Layout Editor** tab offers presets (standard, swapped, vertical stack) plus visibility toggles for the assist cards and status chips so you can tailor the dashboard footprint.
 - Use the **Theme Editor** tab to pick custom colors (track, glow, accent, accent alt, text), name the palette, and apply it live to both gauges. Custom palettes are added to the style dropdown for reuse.

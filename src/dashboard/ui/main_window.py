@@ -39,10 +39,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dashboard_tab = self._build_dashboard_tab()
         self.settings_tab = self._build_settings_tab()
         self.theme_tab = self._build_theme_editor_tab()
+        self.layout_tab = self._build_layout_editor_tab()
 
         self.tabs.addTab(self.dashboard_tab, "Dashboard")
         self.tabs.addTab(self.settings_tab, "Settings")
         self.tabs.addTab(self.theme_tab, "Theme Editor")
+        self.tabs.addTab(self.layout_tab, "Layout Editor")
 
         self.setCentralWidget(self.tabs)
 
@@ -81,6 +83,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.gauges_row = QtWidgets.QHBoxLayout()
         self.gauges_row.setSpacing(18)
+        self.gauges_row.setDirection(QtWidgets.QBoxLayout.LeftToRight)
 
         self.speed_gauge = GaugeWidget("Speed", "mph", 120)
         self.rpm_gauge = GaugeWidget("RPM", "rpm", 7000)
@@ -136,7 +139,9 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(layout_mode_label)
 
         self.layout_mode_combo = QtWidgets.QComboBox()
-        self.layout_mode_combo.addItems(["Standard", "Swap speed / RPM"])
+        self.layout_mode_combo.addItems(
+            ["Standard", "Swap speed / RPM", "Vertical stack"]
+        )
         self.layout_mode_combo.currentTextChanged.connect(self._apply_layout_choice)
         layout.addWidget(self.layout_mode_combo)
 
@@ -184,6 +189,52 @@ class MainWindow(QtWidgets.QMainWindow):
         self.apply_theme_btn = QtWidgets.QPushButton("Apply to gauges")
         self.apply_theme_btn.clicked.connect(self._apply_custom_theme)
         layout.addWidget(self.apply_theme_btn)
+
+        layout.addStretch()
+        return panel
+
+    def _build_layout_editor_tab(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setSpacing(14)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        title = QtWidgets.QLabel("Layout editor")
+        title.setProperty("role", "title")
+        layout.addWidget(title)
+
+        subtitle = QtWidgets.QLabel(
+            "Arrange gauges and panels visually. Use presets or fine-tune visibility."
+        )
+        subtitle.setProperty("role", "subtitle")
+        layout.addWidget(subtitle)
+
+        preset_label = QtWidgets.QLabel("Gauge arrangement")
+        preset_label.setProperty("role", "label")
+        layout.addWidget(preset_label)
+
+        self.layout_preset_combo = QtWidgets.QComboBox()
+        self.layout_preset_combo.addItems(
+            ["Standard", "Swap speed / RPM", "Vertical stack"]
+        )
+        self.layout_preset_combo.currentTextChanged.connect(self._apply_layout_choice)
+        layout.addWidget(self.layout_preset_combo)
+
+        self.assist_toggle = QtWidgets.QCheckBox("Show navigation & battery cards")
+        self.assist_toggle.setChecked(True)
+        self.assist_toggle.stateChanged.connect(self._apply_layout_visibility)
+        layout.addWidget(self.assist_toggle)
+
+        self.status_toggle = QtWidgets.QCheckBox("Show indicator / door chips")
+        self.status_toggle.setChecked(True)
+        self.status_toggle.stateChanged.connect(self._apply_layout_visibility)
+        layout.addWidget(self.status_toggle)
+
+        hint = QtWidgets.QLabel(
+            "Changes are applied instantly. Use Settings to confirm hardware status."
+        )
+        hint.setProperty("role", "subtitle")
+        layout.addWidget(hint)
 
         layout.addStretch()
         return panel
@@ -304,17 +355,43 @@ class MainWindow(QtWidgets.QMainWindow):
     def _apply_layout_choice(self, choice: str) -> None:
         if not hasattr(self, "gauges_row"):
             return
+
+        direction = QtWidgets.QBoxLayout.LeftToRight
+        swap = False
+        if choice == "Swap speed / RPM":
+            swap = True
+        elif choice == "Vertical stack":
+            direction = QtWidgets.QBoxLayout.TopToBottom
+
+        self.gauges_row.setDirection(direction)
+        self._rebuild_gauge_order(swap)
+        self._sync_layout_comboboxes(choice)
+
+    def _rebuild_gauge_order(self, swap: bool) -> None:
         for i in reversed(range(self.gauges_row.count())):
             item = self.gauges_row.takeAt(i)
             if item.widget():
                 item.widget().setParent(None)
 
-        if choice == "Swap speed / RPM":
-            self.gauges_row.addWidget(self.rpm_gauge, 1)
-            self.gauges_row.addWidget(self.speed_gauge, 1)
-        else:
-            self.gauges_row.addWidget(self.speed_gauge, 1)
-            self.gauges_row.addWidget(self.rpm_gauge, 1)
+        widgets = [self.speed_gauge, self.rpm_gauge]
+        if swap:
+            widgets.reverse()
+        for widget in widgets:
+            self.gauges_row.addWidget(widget, 1)
+
+    def _sync_layout_comboboxes(self, choice: str) -> None:
+        with QtCore.QSignalBlocker(self.layout_mode_combo):
+            self.layout_mode_combo.setCurrentText(choice)
+        with QtCore.QSignalBlocker(self.layout_preset_combo):
+            self.layout_preset_combo.setCurrentText(choice)
+
+    def _apply_layout_visibility(self) -> None:
+        show_assist = self.assist_toggle.isChecked()
+        show_status = self.status_toggle.isChecked()
+        if hasattr(self, "assist_panel"):
+            self.assist_panel.setVisible(show_assist)
+        if hasattr(self, "status_panel"):
+            self.status_panel.setVisible(show_status)
 
     def _normalize_color(self, value: str) -> str:
         value = value.strip()
