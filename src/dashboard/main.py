@@ -12,9 +12,8 @@ import importlib.util
 
 from PySide6 import QtWidgets
 
-from dashboard.config import ProviderConfig, auto_detect_kline_port
+from dashboard.config import ProviderConfig, auto_detect_bcm_port, auto_detect_kline_port
 from dashboard.providers.bcm_can_provider import BcmCanProvider
-from dashboard.providers.can_provider import CanProvider
 from dashboard.providers.kline_provider import KLineProvider
 from dashboard.providers.simulator import SimulatorProvider
 from dashboard.services.data_pipeline import DataPipeline
@@ -39,18 +38,6 @@ def _attempt_provider(build_fn, pipeline: DataPipeline, label: str):
     return provider
 def build_providers(config: ProviderConfig, pipeline: DataPipeline):
     providers = []
-    if config.can_channel:
-        can_provider = _attempt_provider(
-            lambda: CanProvider(
-                channel=config.can_channel,
-                bitrate=config.can_bitrate,
-                on_update=pipeline.apply_update,
-            ),
-            pipeline,
-            "CAN",
-        )
-        if can_provider:
-            providers.append(can_provider)
     if config.bcm_can_channel:
         bcm_provider = _attempt_provider(
             lambda: BcmCanProvider(
@@ -99,6 +86,8 @@ def build_providers(config: ProviderConfig, pipeline: DataPipeline):
 
 def build_pipeline(config: ProviderConfig | None = None) -> tuple[DataPipeline, ProviderConfig]:
     config = config or ProviderConfig.from_env()
+    if not config.bcm_can_channel:
+        config.bcm_can_channel = auto_detect_bcm_port()
     pipeline = DataPipeline([])
     pipeline.providers = build_providers(config, pipeline)
     return pipeline, config

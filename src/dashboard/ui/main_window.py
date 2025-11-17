@@ -6,6 +6,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from dashboard.config import (
     ProviderConfig,
+    auto_detect_bcm_port,
+    auto_detect_kline_port,
     available_serial_labels,
     extract_device,
 )
@@ -126,6 +128,45 @@ class DropZone(QtWidgets.QFrame):
         self.content_label.setText(text)
 
 
+class SectionDragger(QtCore.QObject):
+    """Event filter that turns any widget into a draggable tile for layout edits."""
+
+    def __init__(self, key: str, parent: QtWidgets.QWidget):
+        super().__init__(parent)
+        self.key = key
+        self._press_pos: QtCore.QPoint | None = None
+
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
+        if event.type() == QtCore.QEvent.MouseButtonPress and isinstance(
+            event, QtGui.QMouseEvent
+        ):
+            if event.button() == QtCore.Qt.LeftButton:
+                self._press_pos = event.pos()
+            return False
+
+        if event.type() == QtCore.QEvent.MouseMove and isinstance(
+            event, QtGui.QMouseEvent
+        ):
+            if not (event.buttons() & QtCore.Qt.LeftButton):
+                return False
+            if self._press_pos is None:
+                return False
+            if (event.pos() - self._press_pos).manhattanLength() < QtWidgets.QApplication.startDragDistance():
+                return False
+            drag = QtGui.QDrag(obj)
+            mime = QtCore.QMimeData()
+            mime.setData(MIME_TYPE, self.key.encode())
+            drag.setMimeData(mime)
+            if isinstance(obj, QtWidgets.QWidget):
+                drag.setPixmap(obj.grab())
+            drag.exec(QtCore.Qt.MoveAction)
+            return True
+
+        if event.type() == QtCore.QEvent.MouseButtonRelease:
+            self._press_pos = None
+        return False
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
@@ -207,7 +248,7 @@ class MainWindow(QtWidgets.QMainWindow):
         header_row.addWidget(self.fullscreen_btn)
 
         self.quick_ports_btn = QtWidgets.QPushButton("Ports")
-        self.quick_ports_btn.clicked.connect(lambda: self._jump_to_tab(self.settings_tab))
+        self.quick_ports_btn.clicked.connect(self._open_provider_center)
         header_row.addWidget(self.quick_ports_btn)
 
         self.quick_layout_btn = QtWidgets.QPushButton("Layout")
@@ -250,6 +291,12 @@ class MainWindow(QtWidgets.QMainWindow):
             "assist": self.assist_panel,
             "status": self.status_panel,
         }
+        self.section_draggers: dict[str, SectionDragger] = {}
+        for key, widget in self.section_widgets.items():
+            widget.setCursor(QtCore.Qt.OpenHandCursor)
+            dragger = SectionDragger(key, widget)
+            widget.installEventFilter(dragger)
+            self.section_draggers[key] = dragger
         self.slot_positions: dict[str, tuple[int, int, int, int]] = {
             "slot1": (0, 0, 1, 2),
             "slot2": (1, 0, 1, 2),
@@ -304,7 +351,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(title)
 
         subtitle = QtWidgets.QLabel(
-            "Review detected hardware and switch dashboard layout preferences."
+            "Launch the pop-out provider menu to configure BCM/K-Line ports and simulator."
         )
         subtitle.setProperty("role", "subtitle")
         layout.addWidget(subtitle)
@@ -331,28 +378,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.port_summary.setProperty("class", "muted")
         layout.addWidget(self.port_summary)
 
-        button_grid = QtWidgets.QGridLayout()
-        button_grid.setHorizontalSpacing(12)
-        button_grid.setVerticalSpacing(8)
-
-        self.can_config_btn = QtWidgets.QPushButton("Configure CAN…")
-        self.can_config_btn.clicked.connect(self._open_can_dialog)
-        button_grid.addWidget(self.can_config_btn, 0, 0)
-
-        self.bcm_config_btn = QtWidgets.QPushButton("Configure BCM CAN…")
-        self.bcm_config_btn.clicked.connect(self._open_bcm_dialog)
-        button_grid.addWidget(self.bcm_config_btn, 0, 1)
-
-        self.kline_config_btn = QtWidgets.QPushButton("Configure K-Line…")
-        self.kline_config_btn.clicked.connect(self._open_kline_dialog)
-        button_grid.addWidget(self.kline_config_btn, 1, 0)
-
-        self.sim_toggle = QtWidgets.QCheckBox("Enable simulator fallback and preview")
-        self.sim_toggle.setChecked(self.current_config.enable_simulator)
-        self.sim_toggle.stateChanged.connect(self._toggle_simulation_mode)
-        button_grid.addWidget(self.sim_toggle, 1, 1)
-
-        layout.addLayout(button_grid)
+        self.provider_menu_btn = QtWidgets.QPushButton("Open provider menu…")
+        self.provider_menu_btn.clicked.connect(self._open_provider_center)
+        layout.addWidget(self.provider_menu_btn)
 
         layout_mode_label = QtWidgets.QLabel("Layout mode")
         layout_mode_label.setProperty("role", "label")
@@ -701,9 +729,7 @@ class MainWindow(QtWidgets.QMainWindow):
             getattr(self, "fullscreen_btn", None),
             getattr(self, "quick_ports_btn", None),
             getattr(self, "quick_layout_btn", None),
-            getattr(self, "can_config_btn", None),
-            getattr(self, "bcm_config_btn", None),
-            getattr(self, "kline_config_btn", None),
+            getattr(self, "provider_menu_btn", None),
         ]
         for control in controls:
             if control:
@@ -811,90 +837,60 @@ class MainWindow(QtWidgets.QMainWindow):
     def _port_summary_text(self) -> str:
         return (
             "Current: "
-            f"CAN {self.current_config.can_channel or 'sim'} @ {self.current_config.can_bitrate} | "
-            f"BCM {self.current_config.bcm_can_channel or self.current_config.can_channel or 'sim'} @ {self.current_config.bcm_can_bitrate} | "
+            f"BCM {self.current_config.bcm_can_channel or 'sim'} @ {self.current_config.bcm_can_bitrate} | "
             f"K-Line {self.current_config.kline_port or 'sim'} @ {self.current_config.kline_baud} | "
             f"Simulator {'on' if self.current_config.enable_simulator else 'off'}"
         )
 
-    def _open_can_dialog(self) -> None:
+    def _open_provider_center(self) -> None:
         dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Engine CAN settings")
-        form = QtWidgets.QFormLayout(dialog)
+        dialog.setWindowTitle("Provider menu")
+        dialog.setMinimumWidth(420)
 
-        channel_input = QtWidgets.QLineEdit(self.current_config.can_channel)
-        bitrate_input = QtWidgets.QLineEdit(str(self.current_config.can_bitrate))
-        form.addRow("CAN channel", channel_input)
-        form.addRow("Bitrate", bitrate_input)
-
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
-        )
-
-        def accept() -> None:
-            self.current_config.can_channel = channel_input.text().strip()
-            self.current_config.can_bitrate = self._safe_int(
-                bitrate_input.text(), self.current_config.can_bitrate
-            )
-            self._apply_config_change("Updated CAN settings")
-            dialog.accept()
-
-        buttons.accepted.connect(accept)
-        buttons.rejected.connect(dialog.reject)
-        form.addRow(buttons)
-        dialog.exec()
-
-    def _open_bcm_dialog(self) -> None:
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("BCM CAN settings")
-        form = QtWidgets.QFormLayout(dialog)
-
-        channel_input = QtWidgets.QLineEdit(
-            self.current_config.bcm_can_channel or self.current_config.can_channel
-        )
-        bitrate_input = QtWidgets.QLineEdit(str(self.current_config.bcm_can_bitrate))
-        form.addRow("BCM channel", channel_input)
-        form.addRow("Bitrate", bitrate_input)
-
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
-        )
-
-        def accept() -> None:
-            self.current_config.bcm_can_channel = channel_input.text().strip()
-            self.current_config.bcm_can_bitrate = self._safe_int(
-                bitrate_input.text(), self.current_config.bcm_can_bitrate
-            )
-            self._apply_config_change("Updated BCM settings")
-            dialog.accept()
-
-        buttons.accepted.connect(accept)
-        buttons.rejected.connect(dialog.reject)
-        form.addRow(buttons)
-        dialog.exec()
-
-    def _open_kline_dialog(self) -> None:
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("K-Line settings")
         layout = QtWidgets.QVBoxLayout(dialog)
+        layout.setSpacing(12)
 
-        form = QtWidgets.QFormLayout()
-        form.setLabelAlignment(QtCore.Qt.AlignRight)
+        bcm_group = QtWidgets.QGroupBox("BCM (Waveshare USB-CAN-A)")
+        bcm_form = QtWidgets.QFormLayout(bcm_group)
 
-        port_combo = QtWidgets.QComboBox()
-        port_combo.setEditable(True)
-        self._populate_serial_combo(port_combo, self.current_config.kline_port)
-        form.addRow("K-Line port", port_combo)
+        bcm_port_combo = QtWidgets.QComboBox()
+        bcm_port_combo.setEditable(True)
+        self._populate_serial_combo(
+            bcm_port_combo, self.current_config.bcm_can_channel or "COM5"
+        )
+        bcm_form.addRow("Port", bcm_port_combo)
 
-        baud_input = QtWidgets.QLineEdit(str(self.current_config.kline_baud))
-        form.addRow("Baud", baud_input)
+        bcm_bitrate_input = QtWidgets.QLineEdit(str(self.current_config.bcm_can_bitrate))
+        bcm_form.addRow("Bitrate", bcm_bitrate_input)
 
-        detect_btn = QtWidgets.QPushButton("Auto-detect")
+        bcm_detect_btn = QtWidgets.QPushButton("Detect Waveshare")
 
-        def detect() -> None:
-            detected = self.auto_detect_kline(port_combo.currentText())
+        def detect_bcm() -> None:
+            detected = auto_detect_bcm_port(bcm_port_combo.currentText())
+            bcm_port_combo.setCurrentText(detected or bcm_port_combo.currentText())
+
+        bcm_detect_btn.clicked.connect(detect_bcm)
+        bcm_form.addRow("Auto", bcm_detect_btn)
+
+        layout.addWidget(bcm_group)
+
+        kline_group = QtWidgets.QGroupBox("K-Line (ELM)")
+        kline_form = QtWidgets.QFormLayout(kline_group)
+
+        kline_port_combo = QtWidgets.QComboBox()
+        kline_port_combo.setEditable(True)
+        self._populate_serial_combo(kline_port_combo, self.current_config.kline_port)
+        kline_form.addRow("Port", kline_port_combo)
+
+        kline_baud_input = QtWidgets.QLineEdit(str(self.current_config.kline_baud))
+        kline_form.addRow("Baud", kline_baud_input)
+
+        kline_detect_btn = QtWidgets.QPushButton("Detect ELM")
+
+        def detect_kline() -> None:
+            detected = self.auto_detect_kline(kline_port_combo.currentText())
             if detected:
-                port_combo.setCurrentText(detected)
+                kline_port_combo.setCurrentText(detected)
             else:
                 QtWidgets.QMessageBox.information(
                     dialog,
@@ -902,32 +898,47 @@ class MainWindow(QtWidgets.QMainWindow):
                     "No ELM/K-Line adapter found. Check USB connections.",
                 )
 
-        detect_btn.clicked.connect(detect)
-        form.addRow("Detect", detect_btn)
+        kline_detect_btn.clicked.connect(detect_kline)
+        kline_form.addRow("Auto", kline_detect_btn)
 
-        layout.addLayout(form)
+        layout.addWidget(kline_group)
+
+        sim_toggle = QtWidgets.QCheckBox("Enable simulator fallback/preview")
+        sim_toggle.setChecked(self.current_config.enable_simulator)
+        layout.addWidget(sim_toggle)
+
+        note = QtWidgets.QLabel(
+            "Waveshare is used only for BCM data; the ELM adapter is reserved for K-Line."
+        )
+        note.setProperty("class", "muted")
+        layout.addWidget(note)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
         )
 
         def accept() -> None:
-            port_value = port_combo.currentData() or port_combo.currentText()
-            self.current_config.kline_port = str(port_value).strip()
-            self.current_config.kline_baud = self._safe_int(
-                baud_input.text(), self.current_config.kline_baud
+            self.current_config.bcm_can_channel = (
+                bcm_port_combo.currentData() or bcm_port_combo.currentText()
+            ).strip()
+            self.current_config.bcm_can_bitrate = self._safe_int(
+                bcm_bitrate_input.text(), self.current_config.bcm_can_bitrate
             )
-            self._apply_config_change("Updated K-Line settings")
+            self.current_config.kline_port = (
+                kline_port_combo.currentData() or kline_port_combo.currentText()
+            ).strip()
+            self.current_config.kline_baud = self._safe_int(
+                kline_baud_input.text(), self.current_config.kline_baud
+            )
+            self.current_config.enable_simulator = sim_toggle.isChecked()
+            self._apply_config_change("Updated provider settings")
             dialog.accept()
 
         buttons.accepted.connect(accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
-        dialog.exec()
 
-    def _toggle_simulation_mode(self) -> None:
-        self.current_config.enable_simulator = self.sim_toggle.isChecked()
-        self._apply_config_change("Applied simulator toggle")
+        dialog.exec()
 
     def _apply_config_change(self, status: str) -> None:
         try:
