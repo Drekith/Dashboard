@@ -9,6 +9,13 @@ class GaugeWidget(QtWidgets.QWidget):
     """Animated circular gauge with selectable visual styles."""
 
     STYLES = {
+        "oem": {
+            "track": "#0a0e16",
+            "glow": "#111a29",
+            "accent": "#4fc3f7",
+            "accent_alt": "#6ee7ff",
+            "text": "#e8f0ff",
+        },
         "neo": {
             "track": "#111827",
             "glow": "#1f2937",
@@ -34,7 +41,7 @@ class GaugeWidget(QtWidgets.QWidget):
 
     displayValueChanged = QtCore.Signal(float)
 
-    def __init__(self, title: str, unit: str, maximum: float, style: str = "neo") -> None:
+    def __init__(self, title: str, unit: str, maximum: float, style: str = "oem") -> None:
         super().__init__()
         self.title = title
         self.unit = unit
@@ -62,19 +69,19 @@ class GaugeWidget(QtWidgets.QWidget):
         elif self._style_name and self._style_name in self.STYLES:
             palette = self.STYLES[self._style_name]
         else:
-            palette = self.STYLES["neo"]
+            palette = self.STYLES["oem"]
 
         # Ensure required keys exist to avoid blank paints when a custom style
         # was partially provided.
         required_keys = {"track", "glow", "accent", "accent_alt", "text"}
         if not required_keys.issubset(palette):
-            return self.STYLES["neo"]
+            return self.STYLES["oem"]
         return palette
 
     def setStyle(self, style_name: str) -> None:  # noqa: N802
         style = self._palette(style_name)
         self._style = style
-        self._style_name = style_name if style_name in self.STYLES else "neo"
+        self._style_name = style_name if style_name in self.STYLES else "oem"
         self.update()
 
     def setCustomStyle(self, palette: dict[str, str], name: str = "custom") -> None:  # noqa: N802
@@ -86,7 +93,7 @@ class GaugeWidget(QtWidgets.QWidget):
         required_keys = {"track", "glow", "accent", "accent_alt", "text"}
         if not required_keys.issubset(palette):
             # Merge any provided keys with a fallback to keep gauges visible.
-            merged = {**self.STYLES["neo"], **palette}
+            merged = {**self.STYLES["oem"], **palette}
             palette = {key: merged[key] for key in required_keys}
 
         # Register so style selectors can reference the custom entry.
@@ -130,18 +137,26 @@ class GaugeWidget(QtWidgets.QWidget):
                 hints |= QtGui.QPainter.SmoothPixmapTransform
             painter.setRenderHints(hints)
 
-            rect = self.rect().adjusted(18, 18, -18, -18)
+            rect = self.rect().adjusted(22, 22, -22, -22)
             radius = min(rect.width(), rect.height()) / 2
             center = rect.center()
 
             start_angle = 135
             span_angle = 270
-            pen_width = 16
+            pen_width = 18
 
             # background track
             palette = self._palette()
 
-            track_pen = QtGui.QPen(QtGui.QColor(palette["track"]))
+            ring_brush = QtGui.QRadialGradient(center, radius)
+            ring_brush.setColorAt(0, QtGui.QColor(palette["glow"]).lighter(120))
+            ring_brush.setColorAt(1, QtGui.QColor(palette["track"]))
+
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(ring_brush)
+            painter.drawEllipse(QtCore.QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2))
+
+            track_pen = QtGui.QPen(QtGui.QColor(palette["track"]).lighter(105))
             track_pen.setWidth(pen_width)
             track_pen.setCapStyle(QtCore.Qt.RoundCap)
             painter.setPen(track_pen)
@@ -154,16 +169,16 @@ class GaugeWidget(QtWidgets.QWidget):
             )
 
             # glow layer
-            glow_pen = QtGui.QPen(QtGui.QColor(palette["glow"]))
-            glow_pen.setWidth(pen_width + 8)
+            glow_pen = QtGui.QPen(QtGui.QColor(palette["glow"]).darker(110))
+            glow_pen.setWidth(pen_width + 10)
             glow_pen.setCapStyle(QtCore.Qt.RoundCap)
             painter.setPen(glow_pen)
             painter.drawArc(
                 QtCore.QRectF(
-                    center.x() - radius + 6,
-                    center.y() - radius + 6,
-                    (radius - 6) * 2,
-                    (radius - 6) * 2,
+                    center.x() - radius + 8,
+                    center.y() - radius + 8,
+                    (radius - 8) * 2,
+                    (radius - 8) * 2,
                 ),
                 start_angle * 16,
                 -span_angle * 16,
@@ -208,8 +223,25 @@ class GaugeWidget(QtWidgets.QWidget):
             painter.restore()
 
             # value text
+            angle_deg = start_angle - value_angle
+            angle_rad = math.radians(angle_deg)
+            indicator_point = QtCore.QPointF(
+                center.x() + math.cos(angle_rad) * (radius - pen_width * 0.7),
+                center.y() + math.sin(angle_rad) * (radius - pen_width * 0.7),
+            )
+            indicator_pen = QtGui.QPen(QtGui.QColor(palette["accent_alt"]))
+            indicator_pen.setWidth(6)
+            painter.setPen(indicator_pen)
+            painter.drawPoint(indicator_point)
+
+            inner_ring_pen = QtGui.QPen(QtGui.QColor(palette["glow"]).lighter(130))
+            inner_ring_pen.setWidth(3)
+            painter.setPen(inner_ring_pen)
+            painter.setBrush(QtGui.QColor(palette["track"]).darker(140))
+            painter.drawEllipse(center, radius * 0.32, radius * 0.32)
+
             painter.setPen(QtGui.QColor(palette["text"]))
-            value_font = QtGui.QFont("Segoe UI", 38, QtGui.QFont.Bold)
+            value_font = QtGui.QFont("Segoe UI", 42, QtGui.QFont.Bold)
             painter.setFont(value_font)
             painter.drawText(
                 self.rect(),
@@ -218,7 +250,7 @@ class GaugeWidget(QtWidgets.QWidget):
             )
 
             # title text
-            title_font = QtGui.QFont("Segoe UI", 14, QtGui.QFont.Medium)
+            title_font = QtGui.QFont("Segoe UI", 16, QtGui.QFont.Medium)
             painter.setFont(title_font)
             painter.drawText(
                 QtCore.QRectF(self.rect()).adjusted(0, 12, 0, 0),

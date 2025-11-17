@@ -11,8 +11,9 @@ A Windows-focused dashboard that mimics the modern cluster shown in the mock ima
 - Real-time UI built with PySide6 that mirrors the layout of the provided cluster mock: driver zone on the left and assist tiles on the right, now with animated gauges and a style switcher.
 - Modular data providers for CAN, K-Line, and simulated data. Providers run in background threads and merge into a shared `VehicleState`.
 - Graceful degradation: if hardware is missing, a simulator keeps the UI alive while surfacing status messages.
-- Modernized visuals with animated speed/RPM gauges and configurable colorways ("neo", "contrast", "mono").
+- OEM-inspired visuals with animated speed/RPM gauges and configurable colorways ("oem", "neo", "contrast", "mono") tuned for the Vivaro cluster mock.
 - Tabbed navigation with a **Settings** page (hardware status, layout toggle), a **Layout Editor** for gauge arrangement/visibility, and a **Theme Editor** to craft custom gauge palettes without editing code.
+- Touch-friendly controls (large tabs, buttons, combos) plus a quick **Full screen** toggle to maximize usable space on an in-dash display.
 
 ## Requirements
 
@@ -68,8 +69,9 @@ Startup will probe for the configured devices. If initialization fails or no har
 
 ## Styling and UI customization
 
-- Use the **Gauge style** dropdown in the header to swap between the built-in palettes (neo, contrast, mono) without restarting the app.
+- Use the **Gauge style** dropdown in the header to swap between the built-in palettes (oem, neo, contrast, mono) without restarting the app.
 - The assist sidebar now focuses on navigation, ambient temperature, battery, and indicator/door status chips, removing unused mock items like radio, drive mode, and altitude displays.
 - Open the **Settings** tab to confirm which data providers are active and flip the layout to swap gauge order.
 - The **Layout Editor** tab offers presets (standard, swapped, vertical stack) plus visibility toggles for the assist cards and status chips so you can tailor the dashboard footprint.
 - Use the **Theme Editor** tab to pick custom colors (track, glow, accent, accent alt, text), name the palette, and apply it live to both gauges. Custom palettes are added to the style dropdown for reuse.
+- Tap **Full screen** on the Dashboard tab to hide chrome for a cleaner, OEM-like touchscreen experience; tap again to return.

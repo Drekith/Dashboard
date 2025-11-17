@@ -11,21 +11,24 @@ from dashboard.ui.gauge import GaugeWidget
 
 GLOBAL_STYLES = textwrap.dedent(
     """
-    QWidget { background-color: #05070f; color: #e5e7eb; }
-    QLabel { font-family: 'Segoe UI', sans-serif; }
-    QLabel[role="title"] { font-size: 32px; font-weight: 700; letter-spacing: 0.5px; }
+    QWidget { background-color: #05070f; color: #e5e7eb; font-family: 'Segoe UI', sans-serif; }
+    QMainWindow { background: radial-gradient(circle at 30% 20%, #0f172a, #05070f 60%); }
+    QLabel[role="title"] { font-size: 34px; font-weight: 800; letter-spacing: 0.6px; }
     QLabel[role="subtitle"] { font-size: 20px; color: #cbd5e1; }
-    QLabel[role="value"] { font-size: 24px; font-weight: 600; }
-    QLabel[role="label"] { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.2px; }
-    .panel { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0b1220, stop:1 #0f172a); border: 1px solid #1f2937; border-radius: 18px; padding: 18px; }
-    .chip { background: rgba(148, 163, 184, 0.14); border-radius: 12px; padding: 8px 12px; }
-    QComboBox { background: #0f172a; padding: 8px 12px; border: 1px solid #1f2937; border-radius: 12px; color: #e2e8f0; }
+    QLabel[role="value"] { font-size: 26px; font-weight: 700; }
+    QLabel[role="label"] { font-size: 14px; color: #9ba9bd; text-transform: uppercase; letter-spacing: 1.4px; }
+    .panel { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0a0e16, stop:1 #0f172a); border: 1px solid #1f2937; border-radius: 18px; padding: 18px; }
+    .glass { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; padding: 16px; }
+    .chip { background: rgba(148, 163, 184, 0.18); border-radius: 14px; padding: 10px 14px; }
+    QComboBox, QPushButton, QLineEdit { background: #0f172a; padding: 12px 16px; border: 1px solid #1f2937; border-radius: 14px; color: #e2e8f0; font-size: 16px; }
     QComboBox QAbstractItemView { background: #0f172a; selection-background-color: #1f2937; }
+    QPushButton { background: #162032; font-weight: 600; }
+    QPushButton:hover { background: #1e2c45; }
+    QTabWidget::pane { border: none; }
+    QTabBar::tab { background: transparent; color: #cbd5e1; padding: 14px 22px; margin: 0 4px; border-radius: 14px 14px 0 0; font-size: 16px; }
+    QTabBar::tab:selected { background: #111827; color: #f8fafc; border: 1px solid #1f2937; border-bottom: none; }
     QListWidget[class="panel"] { border: 1px solid #1f2937; border-radius: 12px; background: #0b1220; }
-    QListWidget[class="panel"]::item { padding: 10px; }
-    QPushButton { background: #1f2937; border: 1px solid #334155; border-radius: 10px; padding: 10px 14px; color: #e2e8f0; }
-    QPushButton:hover { background: #273548; }
-    QLineEdit { background: #0f172a; border: 1px solid #1f2937; border-radius: 10px; padding: 8px 10px; color: #e2e8f0; }
+    QListWidget[class="panel"]::item { padding: 12px; font-size: 15px; }
     """
 )
 
@@ -37,10 +40,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Vivaro Cluster")
         self.setMinimumSize(1280, 720)
         self.setStyleSheet(GLOBAL_STYLES)
+        self.setAttribute(QtCore.Qt.WA_AcceptTouchEvents, True)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setTabPosition(QtWidgets.QTabWidget.North)
         self.tabs.setDocumentMode(True)
+        self.tabs.setIconSize(QtCore.QSize(28, 28))
+        self.tabs.tabBar().setExpanding(True)
 
         self.dashboard_tab = self._build_dashboard_tab()
         self.settings_tab = self._build_settings_tab()
@@ -54,6 +60,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.setCentralWidget(self.tabs)
 
+        self._apply_touch_targets()
+
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.refresh_ui)
         self.timer.start(150)
@@ -66,6 +74,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         header_row = QtWidgets.QHBoxLayout()
         header_row.setSpacing(12)
+
+        brand = QtWidgets.QLabel("Vivaro OEM")
+        brand.setProperty("role", "title")
+        brand.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        header_row.addWidget(brand)
+
         self.heading_label = QtWidgets.QLabel("⬆")
         self.heading_label.setProperty("role", "title")
         self.heading_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
@@ -81,9 +95,14 @@ class MainWindow(QtWidgets.QMainWindow):
         header_row.addWidget(style_label)
 
         self.style_selector = QtWidgets.QComboBox()
-        self.style_selector.addItems(["neo", "contrast", "mono"])
+        self.style_selector.addItems(["oem", "neo", "contrast", "mono"])
+        self.style_selector.setCurrentText("oem")
         self.style_selector.currentTextChanged.connect(self._on_style_changed)
         header_row.addWidget(self.style_selector)
+
+        self.fullscreen_btn = QtWidgets.QPushButton("Full screen")
+        self.fullscreen_btn.clicked.connect(self._toggle_fullscreen)
+        header_row.addWidget(self.fullscreen_btn)
 
         layout.addLayout(header_row)
 
@@ -91,12 +110,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gauges_row.setSpacing(18)
         self.gauges_row.setDirection(QtWidgets.QBoxLayout.LeftToRight)
 
-        self.speed_gauge = GaugeWidget("Speed", "mph", 120)
-        self.rpm_gauge = GaugeWidget("RPM", "rpm", 7000)
+        self.speed_gauge = GaugeWidget("Speed", "mph", 120, style="oem")
+        self.rpm_gauge = GaugeWidget("RPM", "rpm", 7000, style="oem")
+        gauge_frame = QtWidgets.QFrame()
+        gauge_frame.setProperty("class", "glass")
+        gauge_frame_layout = QtWidgets.QHBoxLayout(gauge_frame)
+        gauge_frame_layout.setSpacing(18)
+        gauge_frame_layout.addLayout(self.gauges_row)
+
         self.gauges_row.addWidget(self.speed_gauge, 1)
         self.gauges_row.addWidget(self.rpm_gauge, 1)
 
-        layout.addLayout(self.gauges_row)
+        layout.addWidget(gauge_frame)
 
         info_row = QtWidgets.QHBoxLayout()
         info_row.setSpacing(18)
@@ -179,7 +204,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.theme_inputs: dict[str, QtWidgets.QLineEdit] = {}
         for key in ["track", "glow", "accent", "accent_alt", "text"]:
             color_row = QtWidgets.QHBoxLayout()
-            line_edit = QtWidgets.QLineEdit(GaugeWidget.STYLES["neo"][key])
+            line_edit = QtWidgets.QLineEdit(GaugeWidget.STYLES["oem"][key])
             line_edit.setPlaceholderText("#rrggbb")
             self.theme_inputs[key] = line_edit
 
@@ -251,6 +276,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_assist_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
+        panel.setProperty("class", "panel")
         layout = QtWidgets.QGridLayout(panel)
         layout.setHorizontalSpacing(14)
         layout.setVerticalSpacing(14)
@@ -268,6 +294,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_status_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
+        panel.setProperty("class", "panel")
         layout = QtWidgets.QVBoxLayout(panel)
         layout.setSpacing(12)
 
@@ -358,6 +385,21 @@ class MainWindow(QtWidgets.QMainWindow):
             label = QtWidgets.QListWidgetItem(name)
             self.provider_list.addItem(label)
 
+    def _apply_touch_targets(self) -> None:
+        controls = [
+            getattr(self, "style_selector", None),
+            getattr(self, "layout_mode_combo", None),
+            getattr(self, "layout_preset_combo", None),
+            getattr(self, "apply_theme_btn", None),
+            getattr(self, "fullscreen_btn", None),
+        ]
+        for control in controls:
+            if control:
+                control.setMinimumHeight(46)
+                control.setMinimumWidth(180)
+        if hasattr(self, "tabs"):
+            self.tabs.setTabBarAutoHide(False)
+
     def _apply_layout_choice(self, choice: str) -> None:
         if not hasattr(self, "gauges_row"):
             return
@@ -415,6 +457,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.style_selector.findText(name) == -1:
             self.style_selector.addItem(name)
         self.style_selector.setCurrentText(name)
+
+    def _toggle_fullscreen(self) -> None:
+        if self.isFullScreen():
+            self.showNormal()
+            self.fullscreen_btn.setText("Full screen")
+        else:
+            self.showFullScreen()
+            self.fullscreen_btn.setText("Exit full screen")
 
     def _pick_color(self, field: str) -> None:
         dialog = QtWidgets.QColorDialog(self)
