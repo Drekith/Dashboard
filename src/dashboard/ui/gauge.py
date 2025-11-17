@@ -125,11 +125,10 @@ class GaugeWidget(QtWidgets.QWidget):
             return
 
         try:
-            painter.setRenderHints(
-                QtGui.QPainter.Antialiasing
-                | QtGui.QPainter.TextAntialiasing
-                | QtGui.QPainter.HighQualityAntialiasing
-            )
+            hints = QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing
+            if hasattr(QtGui.QPainter, "SmoothPixmapTransform"):
+                hints |= QtGui.QPainter.SmoothPixmapTransform
+            painter.setRenderHints(hints)
 
             rect = self.rect().adjusted(18, 18, -18, -18)
             radius = min(rect.width(), rect.height()) / 2
