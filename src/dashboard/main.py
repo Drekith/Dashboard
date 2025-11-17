@@ -1,5 +1,13 @@
 import os
 import sys
+from pathlib import Path
+
+# Allow running this file directly (e.g., `python src/dashboard/main.py`) by
+# ensuring the project root (containing the `dashboard` package) is on sys.path.
+if __package__ in (None, ""):
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
 
 from PySide6 import QtWidgets
 
