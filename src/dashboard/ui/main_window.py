@@ -11,14 +11,17 @@ from dashboard.ui.gauge import GaugeWidget
 
 GLOBAL_STYLES = textwrap.dedent(
     """
-    QWidget { background-color: #05070f; color: #e5e7eb; font-family: 'Segoe UI', sans-serif; }
-    QMainWindow { background: radial-gradient(circle at 30% 20%, #0f172a, #05070f 60%); }
+    QWidget { background-color: #03050c; color: #e5e7eb; font-family: 'Segoe UI', sans-serif; }
+    QMainWindow {
+        background: radial-gradient(circle at 30% 20%, #0d172d, #04060d 55%, #02030b 70%);
+    }
     QLabel[role="title"] { font-size: 34px; font-weight: 800; letter-spacing: 0.6px; }
     QLabel[role="subtitle"] { font-size: 20px; color: #cbd5e1; }
     QLabel[role="value"] { font-size: 26px; font-weight: 700; }
     QLabel[role="label"] { font-size: 14px; color: #9ba9bd; text-transform: uppercase; letter-spacing: 1.4px; }
     .panel { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0a0e16, stop:1 #0f172a); border: 1px solid #1f2937; border-radius: 18px; padding: 18px; }
-    .glass { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; padding: 16px; }
+    .glass { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 16px; }
+    .hero { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0f1828, stop:1 #0a1021); border: 1px solid rgba(255,255,255,0.06); border-radius: 18px; padding: 18px 20px; }
     .chip { background: rgba(148, 163, 184, 0.18); border-radius: 14px; padding: 10px 14px; }
     QComboBox, QPushButton, QLineEdit { background: #0f172a; padding: 12px 16px; border: 1px solid #1f2937; border-radius: 14px; color: #e2e8f0; font-size: 16px; }
     QComboBox QAbstractItemView { background: #0f172a; selection-background-color: #1f2937; }
@@ -29,6 +32,9 @@ GLOBAL_STYLES = textwrap.dedent(
     QTabBar::tab:selected { background: #111827; color: #f8fafc; border: 1px solid #1f2937; border-bottom: none; }
     QListWidget[class="panel"] { border: 1px solid #1f2937; border-radius: 12px; background: #0b1220; }
     QListWidget[class="panel"]::item { padding: 12px; font-size: 15px; }
+    .muted { color: #94a3b8; font-size: 14px; letter-spacing: 0.8px; }
+    .hero-value { font-size: 58px; font-weight: 800; }
+    .hero-unit { color: #9ca3af; font-weight: 600; margin-left: 4px; }
     """
 )
 
@@ -106,6 +112,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout.addLayout(header_row)
 
+        layout.addWidget(self._build_hero_row())
+
         self.gauges_row = QtWidgets.QHBoxLayout()
         self.gauges_row.setSpacing(18)
         self.gauges_row.setDirection(QtWidgets.QBoxLayout.LeftToRight)
@@ -134,6 +142,33 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout.addLayout(info_row)
         return central
+
+    def _build_hero_row(self) -> QtWidgets.QWidget:
+        frame = QtWidgets.QFrame()
+        frame.setProperty("class", "glass")
+        row = QtWidgets.QHBoxLayout(frame)
+        row.setSpacing(14)
+
+        self.speed_hero = self._make_hero_card("Speed", "mph", "0")
+        row.addWidget(self.speed_hero)
+
+        self.rpm_hero = self._make_hero_card("Engine", "rpm", "0")
+        row.addWidget(self.rpm_hero)
+
+        side = QtWidgets.QVBoxLayout()
+        side.setSpacing(10)
+        side.setContentsMargins(0, 0, 0, 0)
+
+        self.battery_hero = self._make_small_chip("Battery", "0%", "🔋")
+        self.temp_hero = self._make_small_chip("Ambient", "--°F", "🌡")
+        self.route_hero = self._make_small_chip("Route", "Waiting", "🧭")
+
+        for chip in [self.battery_hero, self.temp_hero, self.route_hero]:
+            side.addWidget(chip)
+
+        row.addLayout(side, 1)
+
+        return frame
 
     def _build_settings_tab(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
@@ -326,6 +361,61 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return card, body
 
+    def _make_hero_card(self, title: str, unit: str, value: str) -> QtWidgets.QFrame:
+        card = QtWidgets.QFrame()
+        card.setProperty("class", "hero")
+        layout = QtWidgets.QVBoxLayout(card)
+        layout.setSpacing(4)
+        layout.setContentsMargins(16, 14, 16, 14)
+
+        label = QtWidgets.QLabel(title.upper())
+        label.setProperty("class", "muted")
+        layout.addWidget(label)
+
+        value_row = QtWidgets.QHBoxLayout()
+        value_row.setSpacing(6)
+
+        value_label = QtWidgets.QLabel(value)
+        value_label.setProperty("class", "hero-value")
+        value_row.addWidget(value_label)
+
+        unit_label = QtWidgets.QLabel(unit.upper())
+        unit_label.setProperty("class", "hero-unit")
+        value_row.addWidget(unit_label)
+        value_row.addStretch()
+
+        layout.addLayout(value_row)
+
+        card.value_label = value_label  # type: ignore[attr-defined]
+        card.unit_label = unit_label  # type: ignore[attr-defined]
+        return card
+
+    def _make_small_chip(
+        self, title: str, value: str, icon: str = ""
+    ) -> QtWidgets.QFrame:
+        chip = QtWidgets.QFrame()
+        chip.setProperty("class", "panel")
+        layout = QtWidgets.QHBoxLayout(chip)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(10)
+
+        if icon:
+            icon_label = QtWidgets.QLabel(icon)
+            icon_label.setProperty("role", "subtitle")
+            layout.addWidget(icon_label)
+
+        label = QtWidgets.QLabel(title)
+        label.setProperty("role", "label")
+        layout.addWidget(label)
+
+        value_label = QtWidgets.QLabel(value)
+        value_label.setProperty("role", "value")
+        layout.addWidget(value_label)
+        layout.addStretch()
+
+        chip.value_label = value_label  # type: ignore[attr-defined]
+        return chip
+
     def _make_chip(self, title: str, value: str) -> QtWidgets.QWidget:
         wrapper = QtWidgets.QWidget()
         wrapper.setProperty("class", "chip")
@@ -366,6 +456,14 @@ class MainWindow(QtWidgets.QMainWindow):
         assist_text = state.ambient_assist_message or "Monitoring"
         self._update_chip(self.assist_chip, assist_text)
         self.hardware_status_label.setText(f"Status: {assist_text}")
+
+        # hero row mirrors the gauges with a clean digital readout
+        self.speed_hero.value_label.setText(f"{state.speed_mph:,.0f}")  # type: ignore[attr-defined]
+        self.rpm_hero.value_label.setText(f"{state.rpm:,}")  # type: ignore[attr-defined]
+        self.battery_hero.value_label.setText(f"{state.battery_level}%")  # type: ignore[attr-defined]
+        self.temp_hero.value_label.setText(f"{state.ambient_temp_f:.0f}°F")  # type: ignore[attr-defined]
+        route_text = f"{heading_symbol} {distance}" if distance else "No route"
+        self.route_hero.value_label.setText(route_text)  # type: ignore[attr-defined]
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
         self.pipeline.stop()

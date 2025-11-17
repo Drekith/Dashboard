@@ -184,6 +184,21 @@ class GaugeWidget(QtWidgets.QWidget):
                 -span_angle * 16,
             )
 
+            # inner halo to lift the dial off the background
+            halo_brush = QtGui.QRadialGradient(center, radius * 0.65)
+            halo_brush.setColorAt(0.0, QtGui.QColor(palette["glow"]).lighter(140))
+            halo_brush.setColorAt(1.0, QtGui.QColor(palette["track"]).darker(140))
+            painter.setBrush(halo_brush)
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawEllipse(
+                QtCore.QRectF(
+                    center.x() - radius * 0.68,
+                    center.y() - radius * 0.68,
+                    radius * 1.36,
+                    radius * 1.36,
+                )
+            )
+
             # value arc
             ratio = (self._display_value / self.maximum) if self.maximum else 0
             value_angle = span_angle * ratio
@@ -220,6 +235,27 @@ class GaugeWidget(QtWidgets.QWidget):
                     math.sin(angle) * (radius - pen_width * 0.5),
                 )
                 painter.drawLine(inner, outer)
+
+            label_font = QtGui.QFont("Segoe UI", 11, QtGui.QFont.DemiBold)
+            painter.setFont(label_font)
+            painter.setPen(QtGui.QColor(palette["text"]).lighter(115))
+            label_radius = radius - pen_width * 2.6
+            for i in range(ticks + 1):
+                angle = math.radians(start_angle + (span_angle / ticks) * i)
+                pos = QtCore.QPointF(
+                    math.cos(angle) * label_radius,
+                    math.sin(angle) * label_radius,
+                )
+                value = int(self.maximum / ticks * i)
+                painter.save()
+                painter.translate(pos)
+                painter.rotate((math.degrees(angle) + 90))
+                painter.drawText(
+                    QtCore.QRectF(-16, -10, 32, 20),
+                    QtCore.Qt.AlignCenter,
+                    f"{value}",
+                )
+                painter.restore()
             painter.restore()
 
             # value text
