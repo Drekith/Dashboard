@@ -24,9 +24,33 @@ class MainWindow(QtWidgets.QMainWindow):
             .chip { background: rgba(148, 163, 184, 0.14); border-radius: 12px; padding: 8px 12px; }
             QComboBox { background: #0f172a; padding: 8px 12px; border: 1px solid #1f2937; border-radius: 12px; color: #e2e8f0; }
             QComboBox QAbstractItemView { background: #0f172a; selection-background-color: #1f2937; }
+            QListWidget[class="panel"] { border: 1px solid #1f2937; border-radius: 12px; background: #0b1220; }
+            QListWidget[class="panel"]::item { padding: 10px; }
+            QPushButton { background: #1f2937; border: 1px solid #334155; border-radius: 10px; padding: 10px 14px; color: #e2e8f0; }
+            QPushButton:hover { background: #273548; }
+            QLineEdit { background: #0f172a; border: 1px solid #1f2937; border-radius: 10px; padding: 8px 10px; color: #e2e8f0; }
             """
         )
 
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setTabPosition(QtWidgets.QTabWidget.North)
+        self.tabs.setDocumentMode(True)
+
+        self.dashboard_tab = self._build_dashboard_tab()
+        self.settings_tab = self._build_settings_tab()
+        self.theme_tab = self._build_theme_editor_tab()
+
+        self.tabs.addTab(self.dashboard_tab, "Dashboard")
+        self.tabs.addTab(self.settings_tab, "Settings")
+        self.tabs.addTab(self.theme_tab, "Theme Editor")
+
+        self.setCentralWidget(self.tabs)
+
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh_ui)
+        self.timer.start(150)
+
+    def _build_dashboard_tab(self) -> QtWidgets.QWidget:
         central = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(central)
         layout.setSpacing(18)
@@ -39,7 +63,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.heading_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         header_row.addWidget(self.heading_label)
 
-        self.nav_distance_label = QtWidgets.QLabel("A 0 ft")
+        self.nav_distance_label = QtWidgets.QLabel("")
         self.nav_distance_label.setProperty("role", "subtitle")
         header_row.addWidget(self.nav_distance_label)
         header_row.addStretch()
@@ -55,15 +79,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout.addLayout(header_row)
 
-        gauges_row = QtWidgets.QHBoxLayout()
-        gauges_row.setSpacing(18)
+        self.gauges_row = QtWidgets.QHBoxLayout()
+        self.gauges_row.setSpacing(18)
 
         self.speed_gauge = GaugeWidget("Speed", "mph", 120)
         self.rpm_gauge = GaugeWidget("RPM", "rpm", 7000)
-        gauges_row.addWidget(self.speed_gauge, 1)
-        gauges_row.addWidget(self.rpm_gauge, 1)
+        self.gauges_row.addWidget(self.speed_gauge, 1)
+        self.gauges_row.addWidget(self.rpm_gauge, 1)
 
-        layout.addLayout(gauges_row)
+        layout.addLayout(self.gauges_row)
 
         info_row = QtWidgets.QHBoxLayout()
         info_row.setSpacing(18)
@@ -75,11 +99,94 @@ class MainWindow(QtWidgets.QMainWindow):
         info_row.addWidget(self.status_panel, 1)
 
         layout.addLayout(info_row)
-        self.setCentralWidget(central)
+        return central
 
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.refresh_ui)
-        self.timer.start(150)
+    def _build_settings_tab(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setSpacing(14)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        title = QtWidgets.QLabel("System settings")
+        title.setProperty("role", "title")
+        layout.addWidget(title)
+
+        subtitle = QtWidgets.QLabel(
+            "Review detected hardware and switch dashboard layout preferences."
+        )
+        subtitle.setProperty("role", "subtitle")
+        layout.addWidget(subtitle)
+
+        provider_label = QtWidgets.QLabel("Data providers")
+        provider_label.setProperty("role", "label")
+        layout.addWidget(provider_label)
+
+        self.provider_list = QtWidgets.QListWidget()
+        self.provider_list.setProperty("class", "panel")
+        self.provider_list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        layout.addWidget(self.provider_list)
+        self._populate_provider_list()
+
+        self.hardware_status_label = QtWidgets.QLabel("Status: Monitoring")
+        self.hardware_status_label.setProperty("role", "subtitle")
+        layout.addWidget(self.hardware_status_label)
+
+        layout_mode_label = QtWidgets.QLabel("Layout mode")
+        layout_mode_label.setProperty("role", "label")
+        layout.addWidget(layout_mode_label)
+
+        self.layout_mode_combo = QtWidgets.QComboBox()
+        self.layout_mode_combo.addItems(["Standard", "Swap speed / RPM"])
+        self.layout_mode_combo.currentTextChanged.connect(self._apply_layout_choice)
+        layout.addWidget(self.layout_mode_combo)
+
+        layout.addStretch()
+        return panel
+
+    def _build_theme_editor_tab(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setSpacing(14)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        title = QtWidgets.QLabel("Layout & theme editor")
+        title.setProperty("role", "title")
+        layout.addWidget(title)
+
+        subtitle = QtWidgets.QLabel(
+            "Craft a custom palette for the animated gauges and preview instantly."
+        )
+        subtitle.setProperty("role", "subtitle")
+        layout.addWidget(subtitle)
+
+        form = QtWidgets.QFormLayout()
+        form.setLabelAlignment(QtCore.Qt.AlignRight)
+
+        self.theme_name_input = QtWidgets.QLineEdit("custom")
+        form.addRow("Theme name", self.theme_name_input)
+
+        self.theme_inputs: dict[str, QtWidgets.QLineEdit] = {}
+        for key in ["track", "glow", "accent", "accent_alt", "text"]:
+            color_row = QtWidgets.QHBoxLayout()
+            line_edit = QtWidgets.QLineEdit(GaugeWidget.STYLES["neo"][key])
+            line_edit.setPlaceholderText("#rrggbb")
+            self.theme_inputs[key] = line_edit
+
+            choose_btn = QtWidgets.QPushButton("Pick")
+            choose_btn.clicked.connect(lambda _, field=key: self._pick_color(field))
+
+            color_row.addWidget(line_edit)
+            color_row.addWidget(choose_btn)
+            form.addRow(key.replace("_", " ").title(), color_row)
+
+        layout.addLayout(form)
+
+        self.apply_theme_btn = QtWidgets.QPushButton("Apply to gauges")
+        self.apply_theme_btn.clicked.connect(self._apply_custom_theme)
+        layout.addWidget(self.apply_theme_btn)
+
+        layout.addStretch()
+        return panel
 
     def _build_cluster_panel(self) -> QtWidgets.QWidget:
         # legacy cluster panel removed in favor of animated gauges
@@ -157,7 +264,7 @@ class MainWindow(QtWidgets.QMainWindow):
         heading_symbol = {"L": "⬅", "R": "➡"}.get(state.formatted_heading(), "⬆")
         self.heading_label.setText(heading_symbol)
         distance = state.formatted_nav_distance()
-        self.nav_distance_label.setText(f"A {distance}" if distance else "")
+        self.nav_distance_label.setText(distance)
 
         indicator_text = {
             IndicatorState.OFF: "Idle",
@@ -174,6 +281,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_chip(self.door_chip, "Open" if state.door_open else "Closed")
         assist_text = state.ambient_assist_message or "Monitoring"
         self._update_chip(self.assist_chip, assist_text)
+        self.hardware_status_label.setText(f"Status: {assist_text}")
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
         self.pipeline.stop()
@@ -185,3 +293,49 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_style_changed(self, style_name: str) -> None:
         self.speed_gauge.setStyle(style_name)
         self.rpm_gauge.setStyle(style_name)
+
+    def _populate_provider_list(self) -> None:
+        self.provider_list.clear()
+        for provider in self.pipeline.providers:
+            name = provider.__class__.__name__
+            label = QtWidgets.QListWidgetItem(name)
+            self.provider_list.addItem(label)
+
+    def _apply_layout_choice(self, choice: str) -> None:
+        if not hasattr(self, "gauges_row"):
+            return
+        for i in reversed(range(self.gauges_row.count())):
+            item = self.gauges_row.takeAt(i)
+            if item.widget():
+                item.widget().setParent(None)
+
+        if choice == "Swap speed / RPM":
+            self.gauges_row.addWidget(self.rpm_gauge, 1)
+            self.gauges_row.addWidget(self.speed_gauge, 1)
+        else:
+            self.gauges_row.addWidget(self.speed_gauge, 1)
+            self.gauges_row.addWidget(self.rpm_gauge, 1)
+
+    def _normalize_color(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return "#ffffff"
+        if not value.startswith("#"):
+            value = f"#{value}"
+        return value
+
+    def _apply_custom_theme(self) -> None:
+        name = self.theme_name_input.text().strip() or "custom"
+        palette = {key: self._normalize_color(edit.text()) for key, edit in self.theme_inputs.items()}
+        self.speed_gauge.setCustomStyle(palette, name)
+        self.rpm_gauge.setCustomStyle(palette, name)
+        if self.style_selector.findText(name) == -1:
+            self.style_selector.addItem(name)
+        self.style_selector.setCurrentText(name)
+
+    def _pick_color(self, field: str) -> None:
+        dialog = QtWidgets.QColorDialog(self)
+        dialog.setOption(QtWidgets.QColorDialog.ShowAlphaChannel, False)
+        if dialog.exec():
+            color = dialog.selectedColor().name()
+            self.theme_inputs[field].setText(color)

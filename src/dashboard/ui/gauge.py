@@ -52,9 +52,28 @@ class GaugeWidget(QtWidgets.QWidget):
         self.setStyle(style)
 
     def setStyle(self, style_name: str) -> None:  # noqa: N802
-        style = self.STYLES.get(style_name) or self.STYLES["neo"]
+        style = self.STYLES.get(style_name)
+        if style is None:
+            # Unknown styles fall back to the existing palette to avoid resets.
+            return
         self._style = style
         self._style_name = style_name
+        self.update()
+
+    def setCustomStyle(self, palette: dict[str, str], name: str = "custom") -> None:  # noqa: N802
+        """Apply a custom palette to the gauge.
+
+        The palette must include the keys: track, glow, accent, accent_alt, text.
+        """
+
+        required_keys = {"track", "glow", "accent", "accent_alt", "text"}
+        if not required_keys.issubset(palette):
+            return
+
+        # Register so style selectors can reference the custom entry.
+        self.STYLES[name] = palette
+        self._style_name = name
+        self._style = palette
         self.update()
 
     def setValue(self, value: float) -> None:  # noqa: N802
