@@ -1,1 +1,58 @@
-# Dashboard
+# Vivaro Dashboard
+
+A Windows-focused dashboard that mimics the modern cluster shown in the mock image and can read data from:
+
+- A Waveshare USB-to-CAN-A adapter for BCM / CAN bus data (door status, indicators, speed, battery).
+- An ELM327-compatible USB adapter (K-line/ISO9141) for engine PIDs such as speed and RPM.
+- A built-in simulator for development without hardware.
+
+## Features
+
+- Real-time UI built with PySide6 that mirrors the layout of the provided cluster mock: driver zone on the left and assist tiles on the right.
+- Modular data providers for CAN, K-Line, and simulated data. Providers run in background threads and merge into a shared `VehicleState`.
+- Graceful degradation: if hardware is missing, a simulator keeps the UI alive while surfacing status messages.
+
+## Requirements
+
+- Python 3.11+ on Windows.
+- Drivers for your Waveshare USB-to-CAN-A and ELM327 adapters.
+- Dependencies listed in `requirements.txt`:
+  - `PySide6` for the UI.
+  - `python-can` for the Waveshare adapter (`bustype=usb2can`).
+  - `pyserial` for the ELM327 USB adapter.
+
+Install them with:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Running
+
+1. Plug in the adapters and note their Windows COM names (e.g., `COM3` for CAN, `COM4` for ELM327). Update `build_pipeline()` in `src/dashboard/main.py` with those values.
+2. From the repo root, launch the dashboard:
+
+```bash
+python -m dashboard.main
+```
+
+If no hardware is detected, the simulator will provide moving demo data and display a brief status message in the cluster.
+
+## Customizing decoding
+
+- **CAN (BCM):** Update `_decode_message` in `src/dashboard/providers/can_provider.py` with the Vivaro-specific arbitration IDs and byte layouts for speed, battery, indicators, and doors.
+- **K-line (ELM327):** Adjust the PID queries in `src/dashboard/providers/kline_provider.py` if your adapter uses different commands. The defaults query RPM (`010C`) and speed (`010D`).
+
+## Project layout
+
+- `src/dashboard/state.py` – `VehicleState` dataclass and indicator enums.
+- `src/dashboard/providers/` – Hardware and simulator data providers.
+- `src/dashboard/services/data_pipeline.py` – Thread-safe state aggregation.
+- `src/dashboard/ui/main_window.py` – PySide6 UI mirroring the provided layout.
+- `src/dashboard/main.py` – Entry point that wires providers and starts the app.
+
+## Notes for the 2003 Vauxhall Vivaro
+
+- Typical CAN bitrate is 500 kbps; adjust `bitrate` in `CanProvider` if your van differs.
+- The placeholder arbitration ID `0x180` should be replaced with the actual BCM frame IDs from your vehicle.
+- K-line on the Vivaro often runs at 10400 baud. Ensure the ELM327 adapter is configured accordingly.
