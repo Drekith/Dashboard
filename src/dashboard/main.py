@@ -8,6 +8,37 @@ if __package__ in (None, ""):
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
+CONFLICT_TOKENS = ("<<<<<<<", "=======", ">>>>>>>")
+
+
+def _ensure_no_conflicts() -> None:
+    """Fail fast if merge-conflict markers remain in source files.
+
+    Seeing ``SyntaxError: <<<<<<< ours`` on import is a signal that a merge
+    artifact slipped through. Surfacing a clearer error before importing any
+    dashboard modules helps diagnose and repair broken checkouts quickly.
+    """
+
+    source_root = Path(__file__).resolve().parent.parent
+    offenders: list[Path] = []
+    for path in source_root.rglob("*.py"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if any(token in text for token in CONFLICT_TOKENS):
+            offenders.append(path.relative_to(source_root))
+
+    if offenders:
+        joined = ", ".join(str(p) for p in sorted(offenders))
+        raise RuntimeError(
+            "Merge conflict markers detected; clean these files before running: "
+            f"{joined}"
+        )
+
+
+_ensure_no_conflicts()
+
 import importlib.util
 
 from PySide6 import QtWidgets
